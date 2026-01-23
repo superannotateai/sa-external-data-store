@@ -1,15 +1,16 @@
 import { S3Repository } from "./s3Repository";
+import { LocalRepository } from "./localRepository";
 import { Config } from "../utils/config";
 import { Readable } from "stream";
 
 /**
  * Repository class providing a unified interface for data storage operations
- * Currently supports S3 as the storage backend
+ * Supports multiple storage backends: S3 and Local filesystem
  * 
  * This class implements the Repository pattern to abstract storage implementation details
  */
 class Repository {
-    private repository: S3Repository | null = null;
+    private repository: S3Repository | LocalRepository | null = null;
 
     /**
      * Creates a new Repository instance
@@ -17,10 +18,14 @@ class Repository {
      * @throws Error if data store configuration is invalid
      */
     constructor() {
-        if (Config.dataStore() === "S3") {
+        const dataStore = Config.dataStore();
+        
+        if (dataStore === "S3") {
             this.repository = new S3Repository();
+        } else if (dataStore === "LOCAL") {
+            this.repository = new LocalRepository();
         } else {
-            throw new Error("Invalid data store");
+            throw new Error(`Invalid data store: ${dataStore}. Valid options are: S3, LOCAL`);
         }
     }
 

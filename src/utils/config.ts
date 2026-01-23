@@ -83,4 +83,17 @@ export class Config {
 
         return process.env.SA_AUTH_HOST;
     }
+
+    /**
+     * Gets the local storage path from environment variables
+     * @returns Local storage base directory path
+     * @throws Error if LOCAL_STORAGE_PATH is not set
+     */
+    static localStoragePath(): string {
+        if (!process.env.LOCAL_STORAGE_PATH) {
+            throw new Error("LOCAL_STORAGE_PATH is not set");
+        }
+
+        return process.env.LOCAL_STORAGE_PATH;
+    }
 }

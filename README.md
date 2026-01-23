@@ -5,7 +5,9 @@ A Node.js/Express API service for managing data streams with AWS S3 storage back
 ## Features
 
 - **Stream-based data storage**: Efficient handling of large data streams using multipart uploads
-- **S3 integration**: AWS S3 backend for scalable data storage
+- **Multiple storage backends**: Support for both AWS S3 and local filesystem storage
+- **S3 integration**: AWS S3 backend for scalable cloud data storage
+- **Local filesystem storage**: Local filesystem backend for development and on-premise deployments
 - **Authentication**: Integration with SuperAnnotate API for secure access control
 - **TypeScript**: Full TypeScript support with type safety
 - **Unit tests**: Comprehensive test coverage for repository layer
@@ -31,6 +33,8 @@ npm install
 ```
 
 3. Create a `.env` file in the root directory with the following variables:
+
+**For S3 Storage:**
 ```env
 # Server Configuration
 PORT=3005
@@ -43,6 +47,21 @@ S3_BUCKET_NAME=your-bucket-name
 S3_ACCESS_KEY_ID=your-access-key-id
 S3_SECRET_ACCESS_KEY=your-secret-access-key
 S3_REGION=us-east-1
+
+# SuperAnnotate API Configuration
+SA_AUTH_HOST=https://api.superannotate.com
+```
+
+**For Local Filesystem Storage:**
+```env
+# Server Configuration
+PORT=3005
+
+# Data Store Configuration
+DATA_STORE=LOCAL
+
+# Local Storage Configuration
+LOCAL_STORAGE_PATH=/path/to/storage/directory
 
 # SuperAnnotate API Configuration
 SA_AUTH_HOST=https://api.superannotate.com
@@ -176,8 +195,9 @@ deepgram/
 │   ├── middleware/
 │   │   └── auth.ts              # Authentication middleware
 │   ├── repository/
-│   │   ├── index.ts             # Repository singleton
+│   │   ├── index.ts             # Repository singleton and factory
 │   │   ├── s3Repository.ts      # S3 repository implementation
+│   │   ├── localRepository.ts   # Local filesystem repository implementation
 │   │   └── __tests__/           # Repository unit tests
 │   ├── routes/
 │   │   └── dataStream.ts        # Data stream routes
@@ -193,12 +213,20 @@ deepgram/
 
 ## Architecture
 
+### Storage Backend Selection
+
+The service supports multiple storage backends that can be switched via the `DATA_STORE` environment variable:
+
+- **S3**: AWS S3 cloud storage (set `DATA_STORE=S3`)
+- **LOCAL**: Local filesystem storage (set `DATA_STORE=LOCAL`)
+
 ### Repository Pattern
 
 The application uses a repository pattern to abstract data storage:
 
-- **Repository**: Main repository interface (singleton)
-- **S3Repository**: S3-specific implementation
+- **Repository**: Main repository interface (singleton) that delegates to the configured backend
+- **S3Repository**: S3-specific implementation using AWS SDK
+- **LocalRepository**: Local filesystem implementation using Node.js fs module
 - **S3Sdk**: Low-level AWS S3 operations
 
 ### Authentication Flow
@@ -210,12 +238,14 @@ The application uses a repository pattern to abstract data storage:
 
 ### Data Storage
 
-Data is stored in S3 with the following path structure:
+Data is stored with the following path structure (consistent across both storage backends):
+
+**Data files:**
 ```
 items/{teamId}/{projectId}/{folderId}/{itemId}.txt
 ```
 
-Metadata is stored as:
+**Metadata files:**
 ```
 items/{teamId}/{projectId}/{folderId}/{itemId}.json
 ```
