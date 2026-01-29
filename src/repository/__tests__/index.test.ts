@@ -34,6 +34,7 @@ describe("Repository", () => {
             listData: jest.fn(),
             getDataStream: jest.fn(),
             saveDataStream: jest.fn(),
+            getSignedUrl: jest.fn(),
         } as any;
 
         // Mock the S3Repository constructor to return our mock
@@ -105,39 +106,39 @@ describe("Repository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "document.pdf";
             const mockStream = new Readable();
 
             mockS3Repository.getDataStream.mockResolvedValue(mockStream as any);
 
-            const result = await Repository.getDataStream(teamId, projectId, folderId, itemId);
+            const result = await Repository.getDataStream(teamId, projectId, folderId, itemId, fileName);
 
             expect(mockS3Repository.getDataStream).toHaveBeenCalledTimes(1);
             expect(mockS3Repository.getDataStream).toHaveBeenCalledWith(
                 teamId,
                 projectId,
                 folderId,
-                itemId
+                itemId,
+                fileName
             );
             expect(result).toBe(mockStream);
         });
 
         it("should return null when repository is null", async () => {
-            // Set repository to null for this test
             const originalRepository = Repository.repository;
             Repository.repository = null;
 
-            const result = await Repository.getDataStream(1, 2, 3, 4);
+            const result = await Repository.getDataStream(1, 2, 3, 4, "file.txt");
 
             expect(result).toBeNull();
 
-            // Restore repository
             Repository.repository = originalRepository;
         });
 
         it("should return null when repository returns null", async () => {
             mockS3Repository.getDataStream.mockResolvedValue(null);
 
-            const result = await Repository.getDataStream(1, 2, 3, 4);
+            const result = await Repository.getDataStream(1, 2, 3, 4, "file.txt");
 
             expect(result).toBeNull();
         });
@@ -149,12 +150,13 @@ describe("Repository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "document.pdf";
             const mockStream = new Readable();
             const contentLength = 1024;
 
             mockS3Repository.saveDataStream.mockResolvedValue(undefined);
 
-            await Repository.saveDataStream(teamId, projectId, folderId, itemId, mockStream, contentLength);
+            await Repository.saveDataStream(teamId, projectId, folderId, itemId, fileName, mockStream, contentLength);
 
             expect(mockS3Repository.saveDataStream).toHaveBeenCalledTimes(1);
             expect(mockS3Repository.saveDataStream).toHaveBeenCalledWith(
@@ -162,6 +164,7 @@ describe("Repository", () => {
                 projectId,
                 folderId,
                 itemId,
+                fileName,
                 mockStream,
                 contentLength
             );
@@ -172,11 +175,12 @@ describe("Repository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "file.txt";
             const mockStream = new Readable();
 
             mockS3Repository.saveDataStream.mockResolvedValue(undefined);
 
-            await Repository.saveDataStream(teamId, projectId, folderId, itemId, mockStream);
+            await Repository.saveDataStream(teamId, projectId, folderId, itemId, fileName, mockStream);
 
             expect(mockS3Repository.saveDataStream).toHaveBeenCalledTimes(1);
             expect(mockS3Repository.saveDataStream).toHaveBeenCalledWith(
@@ -184,9 +188,54 @@ describe("Repository", () => {
                 projectId,
                 folderId,
                 itemId,
+                fileName,
                 mockStream,
                 undefined
             );
+        });
+    });
+
+    describe("getSignedUrl", () => {
+        it("should return signed URL when repository returns one", async () => {
+            const teamId = 1;
+            const projectId = 2;
+            const folderId = 3;
+            const itemId = 4;
+            const fileName = "document.pdf";
+            const expectedUrl = "https://bucket.s3.region.amazonaws.com/items/1/2/3/4/document.pdf?X-Amz-...";
+
+            mockS3Repository.getSignedUrl.mockResolvedValue(expectedUrl);
+
+            const result = await Repository.getSignedUrl(teamId, projectId, folderId, itemId, fileName);
+
+            expect(mockS3Repository.getSignedUrl).toHaveBeenCalledTimes(1);
+            expect(mockS3Repository.getSignedUrl).toHaveBeenCalledWith(
+                teamId,
+                projectId,
+                folderId,
+                itemId,
+                fileName
+            );
+            expect(result).toBe(expectedUrl);
+        });
+
+        it("should return empty string when repository is null", async () => {
+            const originalRepository = Repository.repository;
+            Repository.repository = null;
+
+            const result = await Repository.getSignedUrl(1, 2, 3, 4, "file.txt");
+
+            expect(result).toBe("");
+
+            Repository.repository = originalRepository;
+        });
+
+        it("should return empty string when repository returns empty string", async () => {
+            mockS3Repository.getSignedUrl.mockResolvedValue("");
+
+            const result = await Repository.getSignedUrl(1, 2, 3, 4, "missing.txt");
+
+            expect(result).toBe("");
         });
     });
 });

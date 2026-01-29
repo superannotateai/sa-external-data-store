@@ -20,6 +20,7 @@ describe("S3Repository", () => {
             listObjects: jest.fn(),
             downloadFile: jest.fn(),
             uploadStream: jest.fn(),
+            getPresignedUrl: jest.fn(),
         } as any;
 
         // Mock the S3Sdk constructor to return our mock
@@ -81,6 +82,7 @@ describe("S3Repository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "document.pdf";
             const mockStream = new Readable();
 
             const mockResponse: Partial<GetObjectCommandOutput> = {
@@ -89,10 +91,10 @@ describe("S3Repository", () => {
 
             mockS3Sdk.downloadFile.mockResolvedValue(mockResponse as GetObjectCommandOutput);
 
-            const result = await s3Repository.getDataStream(teamId, projectId, folderId, itemId);
+            const result = await s3Repository.getDataStream(teamId, projectId, folderId, itemId, fileName);
 
             expect(mockS3Sdk.downloadFile).toHaveBeenCalledTimes(1);
-            expect(mockS3Sdk.downloadFile).toHaveBeenCalledWith("items/1/2/3/4.txt");
+            expect(mockS3Sdk.downloadFile).toHaveBeenCalledWith("items/1/2/3/4/document.pdf");
             expect(result).toBe(mockStream);
         });
 
@@ -101,10 +103,11 @@ describe("S3Repository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "missing.pdf";
 
             mockS3Sdk.downloadFile.mockResolvedValue(null);
 
-            const result = await s3Repository.getDataStream(teamId, projectId, folderId, itemId);
+            const result = await s3Repository.getDataStream(teamId, projectId, folderId, itemId, fileName);
 
             expect(result).toBeNull();
         });
@@ -114,6 +117,7 @@ describe("S3Repository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "file.txt";
 
             const mockResponse: Partial<GetObjectCommandOutput> = {
                 Body: undefined,
@@ -121,7 +125,7 @@ describe("S3Repository", () => {
 
             mockS3Sdk.downloadFile.mockResolvedValue(mockResponse as GetObjectCommandOutput);
 
-            const result = await s3Repository.getDataStream(teamId, projectId, folderId, itemId);
+            const result = await s3Repository.getDataStream(teamId, projectId, folderId, itemId, fileName);
 
             expect(result).toBeNull();
         });
@@ -133,14 +137,15 @@ describe("S3Repository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "document.pdf";
             const mockStream = new Readable();
             const contentLength = 1024;
 
-            await s3Repository.saveDataStream(teamId, projectId, folderId, itemId, mockStream, contentLength);
+            await s3Repository.saveDataStream(teamId, projectId, folderId, itemId, fileName, mockStream, contentLength);
 
             expect(mockS3Sdk.uploadStream).toHaveBeenCalledTimes(1);
             expect(mockS3Sdk.uploadStream).toHaveBeenCalledWith(
-                "items/1/2/3/4.txt",
+                "items/1/2/3/4/document.pdf",
                 mockStream,
                 "text/plain",
                 contentLength
@@ -152,17 +157,37 @@ describe("S3Repository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "file.txt";
             const mockStream = new Readable();
 
-            await s3Repository.saveDataStream(teamId, projectId, folderId, itemId, mockStream);
+            await s3Repository.saveDataStream(teamId, projectId, folderId, itemId, fileName, mockStream);
 
             expect(mockS3Sdk.uploadStream).toHaveBeenCalledTimes(1);
             expect(mockS3Sdk.uploadStream).toHaveBeenCalledWith(
-                "items/1/2/3/4.txt",
+                "items/1/2/3/4/file.txt",
                 mockStream,
                 "text/plain",
                 undefined
             );
+        });
+    });
+
+    describe("getSignedUrl", () => {
+        it("should return presigned URL for file", async () => {
+            const teamId = 1;
+            const projectId = 2;
+            const folderId = 3;
+            const itemId = 4;
+            const fileName = "document.pdf";
+            const expectedUrl = "https://bucket.s3.region.amazonaws.com/items/1/2/3/4/document.pdf?X-Amz-...";
+
+            mockS3Sdk.getPresignedUrl.mockResolvedValue(expectedUrl);
+
+            const result = await s3Repository.getSignedUrl(teamId, projectId, folderId, itemId, fileName);
+
+            expect(mockS3Sdk.getPresignedUrl).toHaveBeenCalledTimes(1);
+            expect(mockS3Sdk.getPresignedUrl).toHaveBeenCalledWith("items/1/2/3/4/document.pdf");
+            expect(result).toBe(expectedUrl);
         });
     });
 });

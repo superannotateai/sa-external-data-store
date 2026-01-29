@@ -32,6 +32,7 @@ export const saItemMiddleware = async (
     const teamId = req.headers["sa-team-id"] as string;
     const projectId = req.headers["sa-project-id"] as string;
     const folderId = req.headers["sa-folder-id"] as string;
+    const fileName = req.headers["sa-file-name"] as string;
 
     // Validate authorization token
     if (!saAccessToken) {
@@ -71,6 +72,14 @@ export const saItemMiddleware = async (
         return res.status(400).json({
             error: "Bad Request",
             message: "Item ID is required",
+            timestamp: new Date().toISOString(),
+        });
+    }
+
+    if (!fileName) {
+        return res.status(400).json({
+            error: "Bad Request",
+            message: "File name is required",
             timestamp: new Date().toISOString(),
         });
     }

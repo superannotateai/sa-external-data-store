@@ -96,4 +96,30 @@ export class Config {
 
         return process.env.LOCAL_STORAGE_PATH;
     }
+
+    /**
+     * Gets the sign url expiration time seconds from environment variables
+     * @returns Local storage base directory path
+     * @throws Error if SIGN_URL_EXPIRATION_TIME_HR is not set
+     */
+    static signUrlExpirationTimeHr(): number {
+        if (!process.env.SIGN_URL_EXPIRATION_TIME_HR) {
+            throw new Error("SIGN_URL_EXPIRATION_TIME_HR is not set");
+        }
+
+        return parseInt(process.env.SIGN_URL_EXPIRATION_TIME_HR);
+    }
+
+    /**
+     * Gets the local sign secret key from environment variables
+     * @returns Local sign secret key
+     * @throws Error if LOCAL_SIGN_SECRET_KEY is not set
+     */
+    static localSignSecretKey(): string {
+        if (!process.env.LOCAL_SIGN_SECRET_KEY) {
+            throw new Error("LOCAL_SIGN_SECRET_KEY is not set");
+        }
+
+        return process.env.LOCAL_SIGN_SECRET_KEY;
+    }
 }

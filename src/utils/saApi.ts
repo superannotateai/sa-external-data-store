@@ -1,6 +1,6 @@
 import https from "https";
 import { URL } from "url";
-import SafeJSON from "./json";
+import SafeJSON from "./functions";
 import { Config } from "./config";
 
 /**

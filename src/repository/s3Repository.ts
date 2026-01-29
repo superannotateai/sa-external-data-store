@@ -53,8 +53,8 @@ export class S3Repository {
      * @param itemId - Item ID
      * @returns Readable stream of the data, or null if file doesn't exist
      */
-    public async getDataStream(teamId: number, projectId: number, folderId: number, itemId: number): Promise<NodeJS.ReadableStream | null> {
-        const data = await this.s3Sdk.downloadFile(`items/${teamId}/${projectId}/${folderId}/${itemId}.txt`);
+    public async getDataStream(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): Promise<NodeJS.ReadableStream | null> {
+        const data = await this.s3Sdk.downloadFile(`items/${teamId}/${projectId}/${folderId}/${itemId}/${fileName}`);
         if (data?.Body) {
             return data.Body as NodeJS.ReadableStream;
         }
@@ -72,7 +72,12 @@ export class S3Repository {
      * @param contentLength - Optional content length in bytes
      * @throws Error if upload fails
      */
-    public async saveDataStream(teamId: number, projectId: number, folderId: number, itemId: number, stream: Readable, contentLength?: number): Promise<void> {
-        await this.s3Sdk.uploadStream(`items/${teamId}/${projectId}/${folderId}/${itemId}.txt`, stream, "text/plain", contentLength);
+    public async saveDataStream(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string, stream: Readable, contentLength?: number): Promise<void> {
+        await this.s3Sdk.uploadStream(`items/${teamId}/${projectId}/${folderId}/${itemId}/${fileName}`, stream, "text/plain", contentLength);
+    }
+
+    public async getSignedUrl(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): Promise<string> {
+        const signedUrl = await this.s3Sdk.getPresignedUrl(`items/${teamId}/${projectId}/${folderId}/${itemId}/${fileName}`);
+        return signedUrl;
     }
 }

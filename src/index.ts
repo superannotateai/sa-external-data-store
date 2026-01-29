@@ -1,13 +1,11 @@
 import express, { Request, Response, NextFunction } from "express";
 import chalk from "chalk";
 import dataStreamRouter from "./routes/dataStream";
+import signedDownloadRouter from "./routes/signedDownload";
+import fileUrlRouter from "./routes/fileDownload";
 
 const app = express();
 const PORT = process.env.PORT || 3005;
-
-// Middleware
-// Parse JSON request bodies
-app.use(express.json());
 
 // Request logging middleware (optional, for development)
 if (process.env.NODE_ENV !== "production") {
@@ -19,6 +17,8 @@ if (process.env.NODE_ENV !== "production") {
 
 // Routes
 app.use("/dataStream", dataStreamRouter);
+app.use("/dataUrl", signedDownloadRouter);
+app.use("/file", fileUrlRouter);
 
 /**
  * Health check endpoint

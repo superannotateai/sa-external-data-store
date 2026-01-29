@@ -40,7 +40,7 @@ describe("LocalRepository", () => {
 
             expect(fs.unlink).toHaveBeenCalledTimes(1);
             expect(fs.unlink).toHaveBeenCalledWith(
-                `${mockBasePath}/items/1/2/3/4.json`
+                `${mockBasePath}/items/1/2/3/4/json`
             );
         });
 
@@ -64,18 +64,18 @@ describe("LocalRepository", () => {
             const teamId = 1;
             const projectId = 2;
             const folderId = 3;
-            const mockFiles = ["4.txt", "5.txt", "6.json"];
+            const mockSubdirs = ["4", "5", "6"];
 
-            (fs.readdir as jest.Mock).mockResolvedValue(mockFiles);
+            (fs.readdir as jest.Mock).mockResolvedValue(mockSubdirs);
 
             const result = await localRepository.listData(teamId, projectId, folderId);
 
             expect(fs.readdir).toHaveBeenCalledTimes(1);
             expect(fs.readdir).toHaveBeenCalledWith(`${mockBasePath}/items/1/2/3`);
             expect(result).toEqual([
-                "items/1/2/3/4.txt",
-                "items/1/2/3/5.txt",
-                "items/1/2/3/6.json",
+                "items/1/2/3/4",
+                "items/1/2/3/5",
+                "items/1/2/3/6",
             ]);
         });
 
@@ -113,17 +113,18 @@ describe("LocalRepository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "document.pdf";
             const mockStream = new Readable();
 
             (fs.access as jest.Mock).mockResolvedValue(undefined);
             (fsSync.createReadStream as jest.Mock).mockReturnValue(mockStream);
 
-            const result = await localRepository.getDataStream(teamId, projectId, folderId, itemId);
+            const result = await localRepository.getDataStream(teamId, projectId, folderId, itemId, fileName);
 
             expect(fs.access).toHaveBeenCalledTimes(1);
-            expect(fs.access).toHaveBeenCalledWith(`${mockBasePath}/items/1/2/3/4.txt`);
+            expect(fs.access).toHaveBeenCalledWith(`${mockBasePath}/items/1/2/3/4/document.pdf`);
             expect(fsSync.createReadStream).toHaveBeenCalledTimes(1);
-            expect(fsSync.createReadStream).toHaveBeenCalledWith(`${mockBasePath}/items/1/2/3/4.txt`);
+            expect(fsSync.createReadStream).toHaveBeenCalledWith(`${mockBasePath}/items/1/2/3/4/document.pdf`);
             expect(result).toBe(mockStream);
         });
 
@@ -132,12 +133,13 @@ describe("LocalRepository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "missing.pdf";
             const mockError: any = new Error("File not found");
             mockError.code = "ENOENT";
 
             (fs.access as jest.Mock).mockRejectedValue(mockError);
 
-            const result = await localRepository.getDataStream(teamId, projectId, folderId, itemId);
+            const result = await localRepository.getDataStream(teamId, projectId, folderId, itemId, fileName);
 
             expect(result).toBeNull();
             expect(fsSync.createReadStream).not.toHaveBeenCalled();
@@ -148,12 +150,13 @@ describe("LocalRepository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "file.txt";
             const mockError = new Error("Permission denied");
 
             (fs.access as jest.Mock).mockRejectedValue(mockError);
 
             await expect(
-                localRepository.getDataStream(teamId, projectId, folderId, itemId)
+                localRepository.getDataStream(teamId, projectId, folderId, itemId, fileName)
             ).rejects.toThrow("Permission denied");
         });
     });
@@ -164,6 +167,7 @@ describe("LocalRepository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "document.pdf";
             const mockStream: any = {
                 pipe: jest.fn(),
                 on: jest.fn(),
@@ -172,13 +176,11 @@ describe("LocalRepository", () => {
                 on: jest.fn(),
             };
 
-            // Mock the pipe method
             mockStream.pipe.mockReturnValue(mockWriteStream);
 
             (fs.mkdir as jest.Mock).mockResolvedValue(undefined);
             (fsSync.createWriteStream as jest.Mock).mockReturnValue(mockWriteStream);
 
-            // Simulate successful write
             mockWriteStream.on.mockImplementation((event: string, callback: Function) => {
                 if (event === "finish") {
                     setTimeout(() => callback(), 0);
@@ -186,14 +188,14 @@ describe("LocalRepository", () => {
                 return mockWriteStream;
             });
 
-            const savePromise = localRepository.saveDataStream(teamId, projectId, folderId, itemId, mockStream);
+            const savePromise = localRepository.saveDataStream(teamId, projectId, folderId, itemId, fileName, mockStream);
 
             await savePromise;
 
             expect(fs.mkdir).toHaveBeenCalledTimes(1);
-            expect(fs.mkdir).toHaveBeenCalledWith(`${mockBasePath}/items/1/2/3`, { recursive: true });
+            expect(fs.mkdir).toHaveBeenCalledWith(`${mockBasePath}/items/1/2/3/4`, { recursive: true });
             expect(fsSync.createWriteStream).toHaveBeenCalledTimes(1);
-            expect(fsSync.createWriteStream).toHaveBeenCalledWith(`${mockBasePath}/items/1/2/3/4.txt`);
+            expect(fsSync.createWriteStream).toHaveBeenCalledWith(`${mockBasePath}/items/1/2/3/4/document.pdf`);
             expect(mockStream.pipe).toHaveBeenCalledWith(mockWriteStream);
         });
 
@@ -202,6 +204,7 @@ describe("LocalRepository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "file.txt";
             const mockStream: any = {
                 pipe: jest.fn(),
                 on: jest.fn(),
@@ -222,10 +225,10 @@ describe("LocalRepository", () => {
                 return mockWriteStream;
             });
 
-            await localRepository.saveDataStream(teamId, projectId, folderId, itemId, mockStream);
+            await localRepository.saveDataStream(teamId, projectId, folderId, itemId, fileName, mockStream);
 
             expect(fsSync.createWriteStream).toHaveBeenCalledTimes(1);
-            expect(fsSync.createWriteStream).toHaveBeenCalledWith(`${mockBasePath}/items/1/2/3/4.txt`);
+            expect(fsSync.createWriteStream).toHaveBeenCalledWith(`${mockBasePath}/items/1/2/3/4/file.txt`);
         });
 
         it("should reject when write stream has error", async () => {
@@ -233,6 +236,7 @@ describe("LocalRepository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "file.txt";
             const mockStream: any = {
                 pipe: jest.fn(),
                 on: jest.fn(),
@@ -255,7 +259,7 @@ describe("LocalRepository", () => {
             });
 
             await expect(
-                localRepository.saveDataStream(teamId, projectId, folderId, itemId, mockStream)
+                localRepository.saveDataStream(teamId, projectId, folderId, itemId, fileName, mockStream)
             ).rejects.toThrow("Write failed");
         });
 
@@ -264,6 +268,7 @@ describe("LocalRepository", () => {
             const projectId = 2;
             const folderId = 3;
             const itemId = 4;
+            const fileName = "file.txt";
             const mockStream: any = {
                 pipe: jest.fn(),
                 on: jest.fn(),
@@ -287,8 +292,39 @@ describe("LocalRepository", () => {
             });
 
             await expect(
-                localRepository.saveDataStream(teamId, projectId, folderId, itemId, mockStream)
+                localRepository.saveDataStream(teamId, projectId, folderId, itemId, fileName, mockStream)
             ).rejects.toThrow("Read failed");
+        });
+    });
+
+    describe("getSignedUrl", () => {
+        it("should return signed URL with path, expires, and signature", async () => {
+            const teamId = 1;
+            const projectId = 2;
+            const folderId = 3;
+            const itemId = 4;
+            const fileName = "document.pdf";
+
+            (Config as any).signUrlExpirationTimeHr = jest.fn().mockReturnValue(24);
+            (Config as any).localSignSecretKey = jest.fn().mockReturnValue("secret");
+
+            const result = await localRepository.getSignedUrl(teamId, projectId, folderId, itemId, fileName);
+
+            expect(result).toMatch(/^\/file\/document\.pdf\?path=items%2F1%2F2%2F3%2F4%2Fdocument\.pdf&expires=\d+&signature=[a-f0-9]+$/);
+        });
+
+        it("should produce valid signature for same inputs", async () => {
+            (Config as any).signUrlExpirationTimeHr = jest.fn().mockReturnValue(1);
+            (Config as any).localSignSecretKey = jest.fn().mockReturnValue("fixed-secret");
+
+            const result1 = await localRepository.getSignedUrl(1, 2, 3, 4, "file.txt");
+            const result2 = await localRepository.getSignedUrl(1, 2, 3, 4, "file.txt");
+
+            const sig1 = result1.match(/signature=([a-f0-9]+)/)?.[1];
+            const sig2 = result2.match(/signature=([a-f0-9]+)/)?.[1];
+            expect(sig1).toBeDefined();
+            expect(sig2).toBeDefined();
+            expect(sig1).toBe(sig2);
         });
     });
 });

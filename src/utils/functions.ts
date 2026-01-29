@@ -3,7 +3,7 @@
  * Provides error-safe JSON parsing and stringification
  * Returns null instead of throwing errors on failure
  */
-class SafeJSON {
+class SafeFunctions {
     /**
      * Safely parses a JSON string
      * Returns null if parsing fails instead of throwing an error
@@ -31,6 +31,21 @@ class SafeJSON {
             return null;
         }
     }
+
+    /**
+     * Helper function to parse and validate numeric header values
+     * @param headerValue - Header value as string
+     * @param headerName - Name of the header for error messages
+     * @returns Parsed number or null if invalid
+     */
+    static parseNumericHeader(headerValue: string | string[] | undefined, headerName: string): number | null {
+        if (!headerValue) {
+            return null;
+        }
+        const value = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+        const parsed = Number(value);
+        return isNaN(parsed) || parsed <= 0 ? null : parsed;
+    }
 }
 
-export default SafeJSON;
+export default SafeFunctions;

@@ -1,4 +1,5 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, HeadObjectCommand, GetObjectCommandOutput, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, HeadObjectCommand, GetObjectCommandOutput } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Readable } from "stream";
 import { Config } from "./config";
@@ -47,10 +48,10 @@ export class S3Sdk {
 
     /**
      * Upload a stream to S3 using multipart upload
-     * 
-     * This method handles large files by splitting them into 5MB parts.
-     * Automatically handles cleanup on error by aborting the multipart upload.
-     * 
+     *
+     * Uses @aws-sdk/lib-storage Upload for automatic multipart handling (5MB parts),
+     * parallel uploads, and cleanup on error.
+     *
      * @param key - S3 object key (path)
      * @param stream - Readable stream to upload
      * @param contentType - Optional MIME type of the stream
@@ -59,106 +60,27 @@ export class S3Sdk {
      */
     public async uploadStream(key: string, stream: Readable, contentType?: string, contentLength?: number): Promise<void> {
         const partSize = 5 * 1024 * 1024; // 5 MB per part
-        let uploadId: string | undefined;
-        const parts: Array<{ ETag: string; PartNumber: number }> = [];
+        const upload = new Upload({
+            client: this.client,
+            params: {
+                Bucket: this.bucketName,
+                Key: key,
+                Body: stream,
+                ContentType: contentType,
+                ContentLength: contentLength,
+            },
+            partSize,
+            queueSize: 4,
+            leavePartsOnError: false,
+        });
 
         try {
-            // Step 1: Create multipart upload
-            const createCommand = new CreateMultipartUploadCommand({
-                Bucket: this.bucketName,
-                Key: key,
-                ContentType: contentType,
-            });
-
-            const createResponse = await this.client.send(createCommand);
-            uploadId = createResponse.UploadId;
-
-            if (!uploadId) {
-                throw new Error("Failed to create multipart upload");
-            }
-
-            // Step 2: Upload parts
-            let partNumber = 1;
-            let buffer = Buffer.alloc(0);
-
-            for await (const chunk of stream) {
-                buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
-
-                // Upload part when buffer reaches partSize
-                while (buffer.length >= partSize) {
-                    const partBuffer = buffer.subarray(0, partSize);
-                    buffer = buffer.subarray(partSize);
-
-                    const uploadPartCommand = new UploadPartCommand({
-                        Bucket: this.bucketName,
-                        Key: key,
-                        PartNumber: partNumber,
-                        UploadId: uploadId,
-                        Body: partBuffer,
-                    });
-
-                    const uploadPartResponse = await this.client.send(uploadPartCommand);
-                    
-                    if (!uploadPartResponse.ETag) {
-                        throw new Error(`Failed to upload part ${partNumber}`);
-                    }
-
-                    parts.push({
-                        ETag: uploadPartResponse.ETag,
-                        PartNumber: partNumber,
-                    });
-
-                    partNumber++;
-                }
-            }
-
-            // Step 3: Upload remaining buffer as final part
-            if (buffer.length > 0) {
-                const uploadPartCommand = new UploadPartCommand({
-                    Bucket: this.bucketName,
-                    Key: key,
-                    PartNumber: partNumber,
-                    UploadId: uploadId,
-                    Body: buffer,
-                });
-
-                const uploadPartResponse = await this.client.send(uploadPartCommand);
-                
-                if (!uploadPartResponse.ETag) {
-                    throw new Error(`Failed to upload final part ${partNumber}`);
-                }
-
-                parts.push({
-                    ETag: uploadPartResponse.ETag,
-                    PartNumber: partNumber,
-                });
-            }
-
-            // Step 4: Complete multipart upload
-            const completeCommand = new CompleteMultipartUploadCommand({
-                Bucket: this.bucketName,
-                Key: key,
-                UploadId: uploadId,
-                MultipartUpload: {
-                    Parts: parts,
-                },
-            });
-
-            await this.client.send(completeCommand);
+            await upload.done();
         } catch (error) {
-            // Cleanup: Abort multipart upload on error
-            if (uploadId) {
-                try {
-                    const abortCommand = new AbortMultipartUploadCommand({
-                        Bucket: this.bucketName,
-                        Key: key,
-                        UploadId: uploadId,
-                    });
-                    await this.client.send(abortCommand);
-                } catch (abortError) {
-                    // Log but don"t throw - original error is more important
-                    console.error("Failed to abort multipart upload:", abortError);
-                }
+            try {
+                await upload.abort();
+            } catch (abortError) {
+                console.error("Failed to abort multipart upload:", abortError);
             }
             throw error;
         }

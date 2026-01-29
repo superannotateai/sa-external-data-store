@@ -60,8 +60,8 @@ class Repository {
      * @param itemId - Item ID
      * @returns Readable stream of the data, or null if not found
      */
-    public async getDataStream(teamId: number, projectId: number, folderId: number, itemId: number): Promise<NodeJS.ReadableStream | null> {
-        return this.repository?.getDataStream(teamId, projectId, folderId, itemId) ?? null;
+    public async getDataStream(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): Promise<NodeJS.ReadableStream | null> {
+        return this.repository?.getDataStream(teamId, projectId, folderId, itemId, fileName) ?? null;
     }
 
     /**
@@ -74,8 +74,21 @@ class Repository {
      * @param contentLength - Optional content length in bytes (helps with large file uploads)
      * @throws Error if save operation fails
      */
-    public async saveDataStream(teamId: number, projectId: number, folderId: number, itemId: number, stream: Readable, contentLength?: number): Promise<void> {
-        await this.repository?.saveDataStream(teamId, projectId, folderId, itemId, stream, contentLength);
+    public async saveDataStream(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string, stream: Readable, contentLength?: number): Promise<void> {
+        await this.repository?.saveDataStream(teamId, projectId, folderId, itemId, fileName, stream, contentLength);
+    }
+
+    /**
+     * Retrieves a signed URL for a specific item
+     * @param teamId - Team ID
+     * @param projectId - Project ID
+     * @param folderId - Folder ID
+     * @param itemId - Item ID
+     * @param fileName - File name
+     * @returns Signed URL
+     */
+    public async getSignedUrl(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): Promise<string> {
+        return this.repository?.getSignedUrl(teamId, projectId, folderId, itemId, fileName) ?? "";
     }
 }
 

@@ -3,6 +3,8 @@ import { Readable } from "stream";
 import * as fs from "fs/promises";
 import * as fsSync from "fs";
 import * as path from "path";
+import crypto from "crypto";
+
 
 /**
  * Local filesystem repository implementation
@@ -32,8 +34,8 @@ export class LocalRepository {
      * @param extension - File extension (e.g., "txt", "json")
      * @returns Full file path
      */
-    private getFilePath(teamId: number, projectId: number, folderId: number, itemId: number, extension: string): string {
-        return path.join(this.basePath, "items", String(teamId), String(projectId), String(folderId), `${itemId}.${extension}`);
+    private getFilePath(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): string {
+        return path.join(this.basePath, "items", String(teamId), String(projectId), String(folderId), String(itemId), fileName);
     }
 
     /**
@@ -78,7 +80,7 @@ export class LocalRepository {
      */
     public async listData(teamId: number, projectId: number, folderId: number): Promise<string[]> {
         const folderPath = this.getFolderPath(teamId, projectId, folderId);
-        
+
         try {
             const files = await fs.readdir(folderPath);
             // Return full relative paths matching S3 format
@@ -94,16 +96,17 @@ export class LocalRepository {
 
     /**
      * Retrieves a data stream for a specific item
-     * Reads the .txt file from filesystem and returns it as a readable stream
+     * Reads the file from filesystem and returns it as a readable stream
      * @param teamId - Team ID
      * @param projectId - Project ID
      * @param folderId - Folder ID
      * @param itemId - Item ID
+     * @param fileName - File name
      * @returns Readable stream of the data, or null if file doesn't exist
      */
-    public async getDataStream(teamId: number, projectId: number, folderId: number, itemId: number): Promise<NodeJS.ReadableStream | null> {
-        const filePath = this.getFilePath(teamId, projectId, folderId, itemId, "txt");
-        
+    public async getDataStream(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): Promise<NodeJS.ReadableStream | null> {
+        const filePath = this.getFilePath(teamId, projectId, folderId, itemId, fileName);
+
         try {
             // Check if file exists before creating stream
             await fs.access(filePath);
@@ -128,30 +131,44 @@ export class LocalRepository {
      * @param contentLength - Optional content length in bytes (not used for local filesystem)
      * @throws Error if upload fails
      */
-    public async saveDataStream(teamId: number, projectId: number, folderId: number, itemId: number, stream: Readable, contentLength?: number): Promise<void> {
-        const filePath = this.getFilePath(teamId, projectId, folderId, itemId, "txt");
+    public async saveDataStream(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string, stream: Readable, contentLength?: number): Promise<void> {
+        const filePath = this.getFilePath(teamId, projectId, folderId, itemId, fileName);
         const dirPath = path.dirname(filePath);
-        
+
         // Ensure directory exists
         await this.ensureDirectory(dirPath);
-        
+
         // Create write stream and pipe the input stream to it
         const writeStream = fsSync.createWriteStream(filePath);
-        
+
         return new Promise((resolve, reject) => {
             stream.pipe(writeStream);
-            
+
             writeStream.on("finish", () => {
                 resolve();
             });
-            
+
             writeStream.on("error", (error: Error) => {
                 reject(error);
             });
-            
+
             stream.on("error", (error: Error) => {
                 reject(error);
             });
         });
+    }
+
+    public async getSignedUrl(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): Promise<string> {
+        const filePath = path.join("items", String(teamId), String(projectId), String(folderId), String(itemId), fileName);
+        const expires = Date.now() + Config.signUrlExpirationTimeHr() * 60 * 60 * 1000;
+        const dataToSign = `${filePath}-${expires}`;
+        const signature = crypto.createHmac('sha256', Config.localSignSecretKey())
+            .update(dataToSign)
+            .digest('hex');
+
+        // Construct the full URL for the client
+        // The client will use this URL to request the file
+        return `/file/${fileName}?path=${encodeURIComponent(filePath)}&expires=${expires}&signature=${signature}`;
+
     }
 }
