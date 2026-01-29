@@ -6,3 +6,4 @@ dist/
 .env.local
 tokens.json
 .idea/
+local_storage
