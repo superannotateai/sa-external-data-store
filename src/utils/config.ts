@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { DataStoreType } from "../types";
 
 /**
  * Configuration management class
@@ -8,15 +9,20 @@ import "dotenv/config";
 export class Config {
     /**
      * Gets the data store type from environment variables
-     * @returns Data store type (e.g., "S3")
-     * @throws Error if DATA_STORE is not set
+     * @returns Data store type ("S3" or "LOCAL")
+     * @throws Error if DATA_STORE is not set or invalid
      */
-    static dataStore(): string {
+    static dataStore(): DataStoreType {
         if (!process.env.DATA_STORE) {
             throw new Error("DATA_STORE is not set");
         }
 
-        return process.env.DATA_STORE;
+        const value = process.env.DATA_STORE;
+        if (value !== "S3" && value !== "LOCAL") {
+            throw new Error(`Invalid data store: ${value}. Valid options are: S3, LOCAL`);
+        }
+
+        return value;
     }
 
     /**
@@ -72,16 +78,16 @@ export class Config {
     }
 
     /**
-     * Gets the SuperAnnotate authentication host from environment variables
-     * @returns SuperAnnotate API host (without protocol)
-     * @throws Error if SA_AUTH_HOST is not set
+     * Gets the S3 prefix from environment variables
+     * @returns S3 prefix
+     * @throws Error if S3_PREFIX is not set
      */
-    static SaAuthHost(): string {
-        if (!process.env.SA_AUTH_HOST) {
-            throw new Error("SA_AUTH_HOST is not set");
+    static s3Prefix(): string {
+        if (!process.env.S3_PREFIX) {
+            throw new Error("S3_PREFIX is not set");
         }
 
-        return process.env.SA_AUTH_HOST;
+        return process.env.S3_PREFIX;
     }
 
     /**
@@ -98,8 +104,8 @@ export class Config {
     }
 
     /**
-     * Gets the sign url expiration time seconds from environment variables
-     * @returns Local storage base directory path
+     * Gets the signed URL expiration time in hours from environment variables
+     * @returns Expiration time in hours for signed URLs
      * @throws Error if SIGN_URL_EXPIRATION_TIME_HR is not set
      */
     static signUrlExpirationTimeHr(): number {
@@ -121,5 +127,27 @@ export class Config {
         }
 
         return process.env.LOCAL_SIGN_SECRET_KEY;
+    }
+
+    /**
+     * Gets the SuperAnnotate access token header name
+     * @returns SuperAnnotate access token header name
+     */
+    static saAuthHeader(): string {
+        return "x-sa-access-token";
+    }
+
+    /**
+     * Gets the SuperAnnotate file path headers
+     * @returns SuperAnnotate file path headers
+     */
+    static saPathHeaders(): Record<string, string> {
+        return {
+            SA_TEAM_ID: "sa-team-id",
+            SA_PROJECT_ID: "sa-project-id",
+            SA_FOLDER_ID: "sa-folder-id",
+            SA_ITEM_ID: "sa-item-id",
+            SA_FILE_PATH: "sa-file-path",
+        };
     }
 }

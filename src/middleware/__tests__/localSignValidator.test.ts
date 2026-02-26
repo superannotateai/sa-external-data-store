@@ -1,120 +1,158 @@
 import { Request, Response } from "express";
-import crypto from "crypto";
-import { localSignValidator } from "../localSignValidator";
+import { PathValidatorMiddleware } from "../pathValidatorMiddleware";
+import * as SaApi from "../../utils/saApi";
+import { Config } from "../../utils/config";
 
 jest.mock("../../utils/config", () => ({
     Config: {
-        localSignSecretKey: jest.fn(() => "test-secret-key"),
+        saPathHeaders: jest.fn(() => ({
+            SA_TEAM_ID: "sa-team-id",
+            SA_PROJECT_ID: "sa-project-id",
+            SA_FOLDER_ID: "sa-folder-id",
+            SA_ITEM_ID: "sa-item-id",
+            SA_FILE_PATH: "sa-file-path",
+        })),
     },
 }));
 
-import { Config } from "../../utils/config";
+jest.mock("../../utils/saApi", () => ({
+    SuperAnnotateApi: {
+        getItem: jest.fn(),
+    },
+}));
 
-describe("localSignValidator", () => {
-    let req: Partial<Request>;
+describe("PathValidatorMiddleware", () => {
+    let req: any;
     let res: Partial<Response>;
     let next: jest.Mock;
 
     beforeEach(() => {
         jest.clearAllMocks();
-        (Config.localSignSecretKey as jest.Mock).mockReturnValue("test-secret-key");
+        (Config.saPathHeaders as jest.Mock).mockReturnValue({
+            SA_TEAM_ID: "sa-team-id",
+            SA_PROJECT_ID: "sa-project-id",
+            SA_FOLDER_ID: "sa-folder-id",
+            SA_ITEM_ID: "sa-item-id",
+            SA_FILE_PATH: "sa-file-path",
+        });
         req = {
-            query: {},
+            headers: {},
+            saAccessToken: "Bearer token",
         };
         res = {
             status: jest.fn().mockReturnThis(),
-            send: jest.fn().mockReturnThis(),
+            json: jest.fn().mockReturnThis(),
         };
         next = jest.fn();
     });
 
-    function buildValidQuery(path: string, expiresOffsetMs: number = 3600000) {
-        const expires = String(Date.now() + expiresOffsetMs);
-        const dataToSign = `${path}-${expires}`;
-        const signature = crypto
-            .createHmac("sha256", "test-secret-key")
-            .update(dataToSign)
-            .digest("hex");
-        return { path, expires, signature };
-    }
+    it("should return 400 when team or project headers are missing", async () => {
+        req.headers = { "sa-team-id": "1" };
 
-    it("should return 400 when path is missing", async () => {
-        req.query = { expires: "123", signature: "abc" };
-
-        await localSignValidator(req as Request, res as Response, next);
+        await PathValidatorMiddleware(req as Request, res as Response, next);
 
         expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.send).toHaveBeenCalledWith("Missing required parameters.");
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ message: "Team ID and Project ID are required" })
+        );
         expect(next).not.toHaveBeenCalled();
     });
 
-    it("should return 400 when expires is missing", async () => {
-        req.query = { path: "items/1/2/3/4/file.pdf", signature: "abc" };
+    it("should return 400 when neither item headers nor file path are provided", async () => {
+        req.headers = {
+            "sa-team-id": "1",
+            "sa-project-id": "2",
+        };
 
-        await localSignValidator(req as Request, res as Response, next);
+        await PathValidatorMiddleware(req as Request, res as Response, next);
 
         expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.send).toHaveBeenCalledWith("Missing required parameters.");
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ message: "File path is required" })
+        );
         expect(next).not.toHaveBeenCalled();
     });
 
-    it("should return 400 when signature is missing", async () => {
-        req.query = { path: "items/1/2/3/4/file.pdf", expires: "123" };
+    it("should set saFilePath using sa-file-path header", async () => {
+        req.headers = {
+            "sa-team-id": "1",
+            "sa-project-id": "2",
+            "sa-file-path": "folder/file.json",
+        };
 
-        await localSignValidator(req as Request, res as Response, next);
+        await PathValidatorMiddleware(req as Request, res as Response, next);
 
-        expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.send).toHaveBeenCalledWith("Missing required parameters.");
-        expect(next).not.toHaveBeenCalled();
-    });
-
-    it("should return 403 when URL has expired", async () => {
-        const path = "items/1/2/3/4/file.pdf";
-        const expires = String(Date.now() - 1000);
-        const dataToSign = `${path}-${expires}`;
-        const signature = crypto
-            .createHmac("sha256", "test-secret-key")
-            .update(dataToSign)
-            .digest("hex");
-        req.query = { path, expires, signature };
-
-        await localSignValidator(req as Request, res as Response, next);
-
-        expect(res.status).toHaveBeenCalledWith(403);
-        expect(res.send).toHaveBeenCalledWith("URL expired.");
-        expect(next).not.toHaveBeenCalled();
-    });
-
-    it("should return 403 when signature is invalid", async () => {
-        const path = "items/1/2/3/4/file.pdf";
-        const expires = String(Date.now() + 3600000);
-        req.query = { path, expires, signature: "wrong-signature" };
-
-        await localSignValidator(req as Request, res as Response, next);
-
-        expect(res.status).toHaveBeenCalledWith(403);
-        expect(res.send).toHaveBeenCalledWith("Invalid signature.");
-        expect(next).not.toHaveBeenCalled();
-    });
-
-    it("should call next() and set req.filePath when signature is valid", async () => {
-        const path = "items/1/2/3/4/document.pdf";
-        req.query = buildValidQuery(path);
-
-        await localSignValidator(req as Request, res as Response, next);
-
+        expect((req as any).saFilePath).toBe("1/2/folder/file.json");
         expect(next).toHaveBeenCalledTimes(1);
-        expect((req as any).filePath).toBe("items/1/2/3/4/document.pdf");
-        expect(res.status).not.toHaveBeenCalled();
+        expect(SaApi.SuperAnnotateApi.getItem).not.toHaveBeenCalled();
     });
 
-    it("should decode URI component for filePath", async () => {
-        const path = "items%2F1%2F2%2F3%2F4%2Fmy%20file.pdf";
-        req.query = buildValidQuery(path);
+    it("should set annotation path when folder and item headers are valid", async () => {
+        req.headers = {
+            "sa-team-id": "1",
+            "sa-project-id": "2",
+            "sa-folder-id": "3",
+            "sa-item-id": "4",
+        };
+        (SaApi.SuperAnnotateApi.getItem as jest.Mock).mockResolvedValue({ id: 4, name: "annotation item" });
 
-        await localSignValidator(req as Request, res as Response, next);
+        await PathValidatorMiddleware(req as Request, res as Response, next);
 
-        expect((req as any).filePath).toBe(decodeURIComponent(path));
-        expect(next).toHaveBeenCalled();
+        expect(SaApi.SuperAnnotateApi.getItem).toHaveBeenCalledWith(1, 2, 3, 4, "Bearer token");
+        expect((req as any).saFilePath).toBe("1/2/3/4/annotation.json");
+        expect(next).toHaveBeenCalledTimes(1);
+    });
+
+    it("should return 401 when item lookup fails", async () => {
+        req.headers = {
+            "sa-team-id": "1",
+            "sa-project-id": "2",
+            "sa-folder-id": "3",
+            "sa-item-id": "4",
+        };
+        (SaApi.SuperAnnotateApi.getItem as jest.Mock).mockResolvedValue(null);
+
+        await PathValidatorMiddleware(req as Request, res as Response, next);
+
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ message: "Access to item is denied" })
+        );
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it("should propagate AuthException from item API", async () => {
+        req.headers = {
+            "sa-team-id": "1",
+            "sa-project-id": "2",
+            "sa-folder-id": "3",
+            "sa-item-id": "4",
+        };
+        (SaApi.SuperAnnotateApi.getItem as jest.Mock).mockRejectedValue({
+            error: { name: "AuthException" },
+        });
+
+        await expect(
+            PathValidatorMiddleware(req as Request, res as Response, next)
+        ).rejects.toEqual({ error: { name: "AuthException" } });
+        expect(res.status).not.toHaveBeenCalled();
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it("should propagate unexpected item API errors", async () => {
+        req.headers = {
+            "sa-team-id": "1",
+            "sa-project-id": "2",
+            "sa-folder-id": "3",
+            "sa-item-id": "4",
+        };
+        const error = new Error("network");
+        (SaApi.SuperAnnotateApi.getItem as jest.Mock).mockRejectedValue(error);
+
+        await expect(
+            PathValidatorMiddleware(req as Request, res as Response, next)
+        ).rejects.toThrow("network");
+        expect(res.status).not.toHaveBeenCalled();
+        expect(next).not.toHaveBeenCalled();
     });
 });

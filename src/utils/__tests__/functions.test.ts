@@ -40,34 +40,34 @@ describe("SafeFunctions", () => {
 
     describe("parseNumericHeader", () => {
         it("should parse valid numeric string", () => {
-            expect(SafeFunctions.parseNumericHeader("123", "x")).toBe(123);
-            expect(SafeFunctions.parseNumericHeader("1", "x")).toBe(1);
+            expect(SafeFunctions.parseNumericHeader("123")).toBe(123);
+            expect(SafeFunctions.parseNumericHeader("1")).toBe(1);
         });
 
         it("should return null for undefined", () => {
-            expect(SafeFunctions.parseNumericHeader(undefined, "x")).toBeNull();
+            expect(SafeFunctions.parseNumericHeader(undefined)).toBeNull();
         });
 
         it("should return null for empty string", () => {
-            expect(SafeFunctions.parseNumericHeader("", "x")).toBeNull();
+            expect(SafeFunctions.parseNumericHeader("")).toBeNull();
         });
 
         it("should use first element when given array", () => {
-            expect(SafeFunctions.parseNumericHeader(["42"], "x")).toBe(42);
+            expect(SafeFunctions.parseNumericHeader(["42"])).toBe(42);
         });
 
         it("should return null for NaN", () => {
-            expect(SafeFunctions.parseNumericHeader("abc", "x")).toBeNull();
-            expect(SafeFunctions.parseNumericHeader("12.34.56", "x")).toBeNull();
+            expect(SafeFunctions.parseNumericHeader("abc")).toBeNull();
+            expect(SafeFunctions.parseNumericHeader("12.34.56")).toBeNull();
         });
 
         it("should return null for zero or negative", () => {
-            expect(SafeFunctions.parseNumericHeader("0", "x")).toBeNull();
-            expect(SafeFunctions.parseNumericHeader("-1", "x")).toBeNull();
+            expect(SafeFunctions.parseNumericHeader("0")).toBeNull();
+            expect(SafeFunctions.parseNumericHeader("-1")).toBeNull();
         });
 
         it("should accept positive decimals", () => {
-            expect(SafeFunctions.parseNumericHeader("1.5", "x")).toBe(1.5);
+            expect(SafeFunctions.parseNumericHeader("1.5")).toBe(1.5);
         });
     });
 });

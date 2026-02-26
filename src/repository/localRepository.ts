@@ -5,7 +5,6 @@ import * as fsSync from "fs";
 import * as path from "path";
 import crypto from "crypto";
 
-
 /**
  * Local filesystem repository implementation
  * Handles data storage operations using the local filesystem
@@ -26,48 +25,42 @@ export class LocalRepository {
     }
 
     /**
-     * Constructs the full file path for an item
+     * Constructs the directory path for a folder (items/teamId/projectId/folderId)
      * @param teamId - Team ID
      * @param projectId - Project ID
      * @param folderId - Folder ID
-     * @param itemId - Item ID
-     * @param extension - File extension (e.g., "txt", "json")
-     * @returns Full file path
-     */
-    private getFilePath(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): string {
-        return path.join(this.basePath, "items", String(teamId), String(projectId), String(folderId), String(itemId), fileName);
-    }
-
-    /**
-     * Constructs the directory path for a folder
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @returns Directory path
+     * @returns Directory path under basePath
      */
     private getFolderPath(teamId: number, projectId: number, folderId: number): string {
         return path.join(this.basePath, "items", String(teamId), String(projectId), String(folderId));
     }
 
     /**
-     * Ensures a directory exists, creating it if necessary
-     * @param dirPath - Directory path to create
+     * Constructs the full file path for an item
+     * @param relativePath - Relative path to the file
+     * @returns Full file path
      */
-    private async ensureDirectory(dirPath: string): Promise<void> {
-        await fs.mkdir(dirPath, { recursive: true });
+    public getFilePath(relativePath: string): string {
+        return path.join(this.basePath, "items", relativePath);
     }
 
     /**
-     * Deletes data associated with a specific item
-     * Deletes the metadata JSON file for the item
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @param itemId - Item ID
+     * Checks if a file exists in the storage
+     * @param path - Relative path to the file
+     * @returns true if file exists, false if not
+     */
+    public async isFileExists(path: string): Promise<boolean> {
+        const filePath = this.getFilePath(path);
+        return fs.access(filePath).then(() => true).catch(() => false);
+    }
+
+    /**
+     * Deletes the file at the given path
+     * @param path - Relative path to the file
      * @throws Error if deletion fails
      */
-    public async deleteData(teamId: number, projectId: number, folderId: number, itemId: number): Promise<void> {
-        const filePath = this.getFilePath(teamId, projectId, folderId, itemId, "json");
+    public async deleteData(path: string): Promise<void> {
+        const filePath = this.getFilePath(path);
         await fs.unlink(filePath);
     }
 
@@ -97,16 +90,12 @@ export class LocalRepository {
     /**
      * Retrieves a data stream for a specific item
      * Reads the file from filesystem and returns it as a readable stream
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @param itemId - Item ID
-     * @param fileName - File name
+     * @param path - File path
      * @returns Readable stream of the data, or null if file doesn't exist
      */
-    public async getDataStream(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): Promise<NodeJS.ReadableStream | null> {
-        const filePath = this.getFilePath(teamId, projectId, folderId, itemId, fileName);
-
+    public async getDataStream(path: string): Promise<NodeJS.ReadableStream | null> {
+        console.log(path);
+        const filePath = this.getFilePath(path);
         try {
             // Check if file exists before creating stream
             await fs.access(filePath);
@@ -121,22 +110,13 @@ export class LocalRepository {
     }
 
     /**
-     * Saves a data stream for a specific item
-     * Writes the stream to filesystem as a .txt file
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @param itemId - Item ID
+     * Saves a data stream to the given path
+     * @param path - Relative path to the file
      * @param stream - Readable stream containing the data to save
-     * @param contentLength - Optional content length in bytes (not used for local filesystem)
-     * @throws Error if upload fails
+     * @throws Error if write fails
      */
-    public async saveDataStream(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string, stream: Readable, contentLength?: number): Promise<void> {
-        const filePath = this.getFilePath(teamId, projectId, folderId, itemId, fileName);
-        const dirPath = path.dirname(filePath);
-
-        // Ensure directory exists
-        await this.ensureDirectory(dirPath);
+    public async saveDataStream(path: string, stream: Readable): Promise<void> {
+        const filePath = this.getFilePath(path);
 
         // Create write stream and pipe the input stream to it
         const writeStream = fsSync.createWriteStream(filePath);
@@ -158,17 +138,33 @@ export class LocalRepository {
         });
     }
 
-    public async getSignedUrl(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): Promise<string> {
-        const filePath = path.join("items", String(teamId), String(projectId), String(folderId), String(itemId), fileName);
+    public async getSignedUrl(path: string, host?: string): Promise<string> {
+        if (!host) {
+            throw new Error("Host is required");
+        }
         const expires = Date.now() + Config.signUrlExpirationTimeHr() * 60 * 60 * 1000;
-        const dataToSign = `${filePath}-${expires}`;
+        const dataToSign = `${path}-${expires}`;
         const signature = crypto.createHmac('sha256', Config.localSignSecretKey())
             .update(dataToSign)
             .digest('hex');
 
         // Construct the full URL for the client
         // The client will use this URL to request the file
-        return `/file/${fileName}?path=${encodeURIComponent(filePath)}&expires=${expires}&signature=${signature}`;
+        return `${host}/storage/fileSigned?path=${encodeURIComponent(path)}&expires=${expires}&signature=${signature}`;
+    }
 
+    public async validateSignature(path: string, expires: string, signature: string): Promise<boolean> {
+        const expiresTimestamp = Number(expires);
+        if (!Number.isFinite(expiresTimestamp) || expiresTimestamp < Date.now()) {
+            return false;
+        }
+
+        const dataToSign = `${path}-${expires}`;
+        const expectedSignature = crypto
+            .createHmac("sha256", Config.localSignSecretKey())
+            .update(dataToSign)
+            .digest("hex");
+
+        return expectedSignature === signature;
     }
 }

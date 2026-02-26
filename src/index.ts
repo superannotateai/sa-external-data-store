@@ -1,11 +1,14 @@
 import express, { Request, Response, NextFunction } from "express";
+import cors from "cors";
 import chalk from "chalk";
-import dataStreamRouter from "./routes/dataStream";
-import signedDownloadRouter from "./routes/signedDownload";
-import fileUrlRouter from "./routes/fileDownload";
+import storageRouter from "./routes/storageRouter";
+import annotationRouter from "./routes/annotationRouter";
+import { sendError, errorMiddleware } from "./utils/errorHandler";
 
 const app = express();
 const PORT = process.env.PORT || 3005;
+
+app.use(cors());
 
 // Request logging middleware (optional, for development)
 if (process.env.NODE_ENV !== "production") {
@@ -16,34 +19,23 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // Routes
-app.use("/dataStream", dataStreamRouter);
-app.use("/dataUrl", signedDownloadRouter);
-app.use("/file", fileUrlRouter);
+app.use("/storage", storageRouter);
+app.use("/annotation", annotationRouter);
 
 /**
  * Health check endpoint
- * Returns server status
+ * @returns 200 with { message: "OK" }
  */
 app.get("/health", (req: Request, res: Response) => {
     res.status(200).json({ message: "OK" });
 });
 
-// Error handling middleware
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-    console.error("Unhandled error:", err);
-    res.status(500).json({
-        error: "Internal Server Error",
-        timestamp: new Date().toISOString(),
-    });
-});
+// Error handling middleware (formats AppError or generic Error as JSON)
+app.use(errorMiddleware);
 
-// 404 handler
+// 404 handler (no matching route)
 app.use((req: Request, res: Response) => {
-    res.status(404).json({
-        error: "Not Found",
-        message: `Route ${req.method} ${req.path} not found`,
-        timestamp: new Date().toISOString(),
-    });
+    sendError(res, 404, `Route ${req.method} ${req.path} not found`);
 });
 
 // Start server

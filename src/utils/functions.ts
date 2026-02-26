@@ -38,7 +38,7 @@ class SafeFunctions {
      * @param headerName - Name of the header for error messages
      * @returns Parsed number or null if invalid
      */
-    static parseNumericHeader(headerValue: string | string[] | undefined, headerName: string): number | null {
+    static parseNumericHeader(headerValue: string | string[] | undefined): number | null {
         if (!headerValue) {
             return null;
         }

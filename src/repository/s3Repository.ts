@@ -1,3 +1,4 @@
+import { Config } from "../utils/config";
 import { S3Sdk } from "../utils/s3Sdk";
 import { Readable } from "stream";
 
@@ -21,16 +22,24 @@ export class S3Repository {
     }
 
     /**
-     * Deletes data associated with a specific item
-     * Deletes the metadata JSON file for the item
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @param itemId - Item ID
+     * Checks if a file exists in the storage
+     * @param path - Relative path to the file
+     * @returns true if file exists, false if not
+     */
+    public async isFileExists(path: string): Promise<boolean> {
+        return await this.s3Sdk.objectExists(`${Config.s3Prefix()}/${path}`);
+    }
+
+    /**
+     * Deletes an object in S3 by key
+     * @param teamId - Team ID (used to build key)
+     * @param projectId - Project ID (used to build key)
+     * @param folderId - Folder ID (used to build key)
+     * @param itemId - Item ID (used to build key; object key is items/.../itemId.json)
      * @throws Error if deletion fails
      */
     public async deleteData(teamId: number, projectId: number, folderId: number, itemId: number): Promise<void> {
-        await this.s3Sdk.deleteFile(`items/${teamId}/${projectId}/${folderId}/${itemId}.json`);
+        await this.s3Sdk.deleteFile(`${Config.s3Prefix()}/${teamId}/${projectId}/${folderId}/${itemId}.json`);
     }
 
     /**
@@ -41,20 +50,17 @@ export class S3Repository {
      * @returns Array of S3 object keys (file paths) in the folder
      */
     public async listData(teamId: number, projectId: number, folderId: number): Promise<string[]> {
-        return await this.s3Sdk.listObjects(`items/${teamId}/${projectId}/${folderId}`);
+        return await this.s3Sdk.listObjects(`${Config.s3Prefix()}/${teamId}/${projectId}/${folderId}`);
     }
 
     /**
-     * Retrieves a data stream for a specific item
-     * Downloads the .txt file from S3 and returns it as a readable stream
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @param itemId - Item ID
-     * @returns Readable stream of the data, or null if file doesn't exist
+     * Retrieves a data stream for a path
+     * Downloads the object from S3 and returns it as a readable stream
+     * @param path - Relative path to the file (S3 key under items/)
+     * @returns Readable stream of the data, or null if object doesn't exist
      */
-    public async getDataStream(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): Promise<NodeJS.ReadableStream | null> {
-        const data = await this.s3Sdk.downloadFile(`items/${teamId}/${projectId}/${folderId}/${itemId}/${fileName}`);
+    public async getDataStream(path: string): Promise<NodeJS.ReadableStream | null> {
+        const data = await this.s3Sdk.downloadFile(`${Config.s3Prefix()}/${path}`);
         if (data?.Body) {
             return data.Body as NodeJS.ReadableStream;
         }
@@ -64,20 +70,35 @@ export class S3Repository {
     /**
      * Saves a data stream for a specific item
      * Uploads the stream to S3 as a .txt file using multipart upload for large files
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @param itemId - Item ID
+     * @param path - Relative path to the file
      * @param stream - Readable stream containing the data to save
-     * @param contentLength - Optional content length in bytes
      * @throws Error if upload fails
      */
-    public async saveDataStream(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string, stream: Readable, contentLength?: number): Promise<void> {
-        await this.s3Sdk.uploadStream(`items/${teamId}/${projectId}/${folderId}/${itemId}/${fileName}`, stream, "text/plain", contentLength);
+    public async saveDataStream(path: string, stream: Readable): Promise<void> {
+        await this.s3Sdk.uploadStream(`${Config.s3Prefix()}/${path}`, stream, "text/plain");
     }
 
-    public async getSignedUrl(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): Promise<string> {
-        const signedUrl = await this.s3Sdk.getPresignedUrl(`items/${teamId}/${projectId}/${folderId}/${itemId}/${fileName}`);
+    /**
+     * Retrieves a signed URL for a specific item
+     * @param path - Relative path to the file
+     * @returns Signed URL
+     */
+    public async getSignedUrl(path: string, _host?: string): Promise<string> {
+        const signedUrl = await this.s3Sdk.getPresignedUrl(`${Config.s3Prefix()}/${path}`);
         return signedUrl;
+    }
+
+    /**
+     * Returns the S3 object key for a path (items/ + path)
+     * @param path - Relative path to the file
+     * @returns S3 object key (e.g. items/1/2/file.json)
+     */
+    public getFilePath(path: string): string {
+        return `${Config.s3Prefix()}/${path}`;
+    }
+
+    public async validateSignature(_path: string, _expires: string, _signature: string): Promise<boolean> {
+        // S3 signed URLs are validated by AWS at request time.
+        return true;
     }
 }

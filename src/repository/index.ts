@@ -1,6 +1,7 @@
 import { S3Repository } from "./s3Repository";
 import { LocalRepository } from "./localRepository";
 import { Config } from "../utils/config";
+import { DataStoreType } from "../types";
 import { Readable } from "stream";
 
 /**
@@ -18,77 +19,70 @@ class Repository {
      * @throws Error if data store configuration is invalid
      */
     constructor() {
-        const dataStore = Config.dataStore();
-        
+        const dataStore: DataStoreType = Config.dataStore();
+
         if (dataStore === "S3") {
             this.repository = new S3Repository();
-        } else if (dataStore === "LOCAL") {
-            this.repository = new LocalRepository();
         } else {
-            throw new Error(`Invalid data store: ${dataStore}. Valid options are: S3, LOCAL`);
+            this.repository = new LocalRepository();
         }
     }
 
     /**
-     * Deletes data associated with a specific item
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @param itemId - Item ID
-     * @throws Error if deletion fails
-     */
-    public async deleteData(teamId: number, projectId: number, folderId: number, itemId: number): Promise<void> {
-        await this.repository?.deleteData(teamId, projectId, folderId, itemId);
-    }
-
-    /**
-     * Lists all data keys for a specific folder
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @returns Array of data keys (file paths), empty array if none found
-     */
-    public async listData(teamId: number, projectId: number, folderId: number): Promise<string[]> {
-        return this.repository?.listData(teamId, projectId, folderId) ?? [];
-    }
-
-    /**
-     * Retrieves a data stream for a specific item
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @param itemId - Item ID
+     * Retrieves a data stream for a path
+     * @param path - Relative path to the file
      * @returns Readable stream of the data, or null if not found
      */
-    public async getDataStream(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): Promise<NodeJS.ReadableStream | null> {
-        return this.repository?.getDataStream(teamId, projectId, folderId, itemId, fileName) ?? null;
+    public async getDataStream(path: string): Promise<NodeJS.ReadableStream | null> {
+        return this.repository?.getDataStream(path) ?? null;
     }
 
     /**
      * Saves a data stream for a specific item
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @param itemId - Item ID
+     * @param path - Relative path to the file
      * @param stream - Readable stream containing the data to save
-     * @param contentLength - Optional content length in bytes (helps with large file uploads)
      * @throws Error if save operation fails
      */
-    public async saveDataStream(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string, stream: Readable, contentLength?: number): Promise<void> {
-        await this.repository?.saveDataStream(teamId, projectId, folderId, itemId, fileName, stream, contentLength);
+    public async saveDataStream(path: string, stream: Readable): Promise<void> {
+        await this.repository?.saveDataStream(path, stream);
     }
 
     /**
-     * Retrieves a signed URL for a specific item
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @param itemId - Item ID
-     * @param fileName - File name
-     * @returns Signed URL
+     * Retrieves a signed URL for a path
+     * @param path - Relative path to the file
+     * @returns Signed URL string
      */
-    public async getSignedUrl(teamId: number, projectId: number, folderId: number, itemId: number, fileName: string): Promise<string> {
-        return this.repository?.getSignedUrl(teamId, projectId, folderId, itemId, fileName) ?? "";
+    public async getSignedUrl(path: string, host?: string): Promise<string> {
+        return this.repository?.getSignedUrl(path, host) ?? "";
+    }
+
+    /**
+     * Retrieves the full file path for a specific item
+     * @param path - Relative path to the file
+     * @returns Full file path
+     */
+    public getFilePath(path: string): string {
+        return this.repository?.getFilePath(path) ?? "";
+    }
+
+    /**
+     * Checks if a file exists in the storage
+     * @param path - Relative path to the file
+     * @returns true if file exists, false if not
+     */
+    public async isFileExists(path: string): Promise<boolean> {
+        return this.repository?.isFileExists(path) ?? false;
+    }
+
+    /**
+     * Validates signed URL parameters for storage backends that support local HMAC signatures
+     * @param path - Relative path to the file
+     * @param expires - Expiration timestamp in milliseconds
+     * @param signature - HMAC signature
+     * @returns true if signature is valid, false otherwise
+     */
+    public async validateSignature(path: string, expires: string, signature: string): Promise<boolean> {
+        return this.repository?.validateSignature(path, expires, signature) ?? false;
     }
 }
 

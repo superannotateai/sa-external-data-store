@@ -1,29 +1,31 @@
 import { Request, Response } from "express";
-import { saItemMiddleware } from "../auth";
+import { AuthSaMiddleware } from "../authSaMiddleware";
+import * as SaApi from "../../utils/saApi";
+import { Config } from "../../utils/config";
 
 jest.mock("../../utils/saApi", () => ({
-    saApi: {
-        getItem: jest.fn(),
+    SuperAnnotateApi: {
+        getMySAUser: jest.fn(),
     },
 }));
 
-import * as SaApi from "../../utils/saApi";
+jest.mock("../../utils/config", () => ({
+    Config: {
+        saAuthHeader: jest.fn(() => "x-sa-access-token"),
+    },
+}));
 
-describe("saItemMiddleware", () => {
+describe("AuthSaMiddleware", () => {
     let req: Partial<Request>;
     let res: Partial<Response>;
     let next: jest.Mock;
 
     beforeEach(() => {
         jest.clearAllMocks();
+        (Config.saAuthHeader as jest.Mock).mockReturnValue("x-sa-access-token");
         req = {
             headers: {
-                authorization: "Bearer token",
-                "sa-team-id": "1",
-                "sa-project-id": "2",
-                "sa-folder-id": "3",
-                "sa-item-id": "4",
-                "sa-file-name": "file.pdf",
+                "x-sa-access-token": "Bearer token",
             },
         };
         res = {
@@ -34,9 +36,9 @@ describe("saItemMiddleware", () => {
     });
 
     it("should return 401 when authorization header is missing", async () => {
-        delete req.headers!["authorization"];
+        delete req.headers!["x-sa-access-token"];
 
-        await saItemMiddleware(req as Request, res as Response, next);
+        await AuthSaMiddleware(req as Request, res as Response, next);
 
         expect(res.status).toHaveBeenCalledWith(401);
         expect(res.json).toHaveBeenCalledWith(
@@ -48,129 +50,73 @@ describe("saItemMiddleware", () => {
         expect(next).not.toHaveBeenCalled();
     });
 
-    it("should return 400 when sa-team-id is missing", async () => {
-        delete req.headers!["sa-team-id"];
+    it("should return 401 when user is not found or invalid", async () => {
+        (SaApi.SuperAnnotateApi.getMySAUser as jest.Mock).mockResolvedValue(null);
 
-        await saItemMiddleware(req as Request, res as Response, next);
+        await AuthSaMiddleware(req as Request, res as Response, next);
 
-        expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.json).toHaveBeenCalledWith(
-            expect.objectContaining({ message: "Team ID is required" })
-        );
-        expect(next).not.toHaveBeenCalled();
-    });
-
-    it("should return 400 when sa-project-id is missing", async () => {
-        delete req.headers!["sa-project-id"];
-
-        await saItemMiddleware(req as Request, res as Response, next);
-
-        expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.json).toHaveBeenCalledWith(
-            expect.objectContaining({ message: "Project ID is required" })
-        );
-        expect(next).not.toHaveBeenCalled();
-    });
-
-    it("should return 400 when sa-folder-id is missing", async () => {
-        delete req.headers!["sa-folder-id"];
-
-        await saItemMiddleware(req as Request, res as Response, next);
-
-        expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.json).toHaveBeenCalledWith(
-            expect.objectContaining({ message: "Folder ID is required" })
-        );
-        expect(next).not.toHaveBeenCalled();
-    });
-
-    it("should return 400 when sa-item-id is missing", async () => {
-        delete req.headers!["sa-item-id"];
-
-        await saItemMiddleware(req as Request, res as Response, next);
-
-        expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.json).toHaveBeenCalledWith(
-            expect.objectContaining({ message: "Item ID is required" })
-        );
-        expect(next).not.toHaveBeenCalled();
-    });
-
-    it("should return 400 when sa-file-name is missing", async () => {
-        delete req.headers!["sa-file-name"];
-
-        await saItemMiddleware(req as Request, res as Response, next);
-
-        expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.json).toHaveBeenCalledWith(
-            expect.objectContaining({ message: "File name is required" })
-        );
-        expect(next).not.toHaveBeenCalled();
-    });
-
-    it("should return 400 when team/project/folder IDs are not valid numbers", async () => {
-        req.headers!["sa-team-id"] = "abc";
-
-        await saItemMiddleware(req as Request, res as Response, next);
-
-        expect(res.status).toHaveBeenCalledWith(400);
+        expect(SaApi.SuperAnnotateApi.getMySAUser).toHaveBeenCalledWith("Bearer token");
+        expect(res.status).toHaveBeenCalledWith(401);
         expect(res.json).toHaveBeenCalledWith(
             expect.objectContaining({
-                message: "Team ID, Project ID, and Folder ID must be valid numbers",
+                message: "Invalid or expired authorization token",
             })
         );
         expect(next).not.toHaveBeenCalled();
     });
 
-    it("should return 404 when item is not found", async () => {
-        (SaApi.saApi.getItem as jest.Mock).mockResolvedValue(null);
+    it("should return 401 when user has no id", async () => {
+        (SaApi.SuperAnnotateApi.getMySAUser as jest.Mock).mockResolvedValue({ email: "a@b.com" });
 
-        await saItemMiddleware(req as Request, res as Response, next);
+        await AuthSaMiddleware(req as Request, res as Response, next);
 
-        expect(SaApi.saApi.getItem).toHaveBeenCalledWith(1, 2, 3, "4", "Bearer token");
-        expect(res.status).toHaveBeenCalledWith(404);
+        expect(res.status).toHaveBeenCalledWith(401);
         expect(res.json).toHaveBeenCalledWith(
-            expect.objectContaining({ message: "Item not found" })
+            expect.objectContaining({
+                message: "Invalid or expired authorization token",
+            })
         );
         expect(next).not.toHaveBeenCalled();
     });
 
     it("should return 401 on AuthException from API", async () => {
-        (SaApi.saApi.getItem as jest.Mock).mockRejectedValue({
+        (SaApi.SuperAnnotateApi.getMySAUser as jest.Mock).mockRejectedValue({
             error: { name: "AuthException", message: "Unauthorized" },
         });
 
-        await saItemMiddleware(req as Request, res as Response, next);
+        await AuthSaMiddleware(req as Request, res as Response, next);
 
         expect(res.status).toHaveBeenCalledWith(401);
         expect(res.json).toHaveBeenCalledWith(
             expect.objectContaining({
-                message: "You are not authorized to access this resource",
+                message: "Invalid or expired authorization token",
             })
         );
         expect(next).not.toHaveBeenCalled();
     });
 
     it("should return 500 on other API errors", async () => {
-        (SaApi.saApi.getItem as jest.Mock).mockRejectedValue(new Error("Network error"));
+        (SaApi.SuperAnnotateApi.getMySAUser as jest.Mock).mockRejectedValue(new Error("Network error"));
 
-        await saItemMiddleware(req as Request, res as Response, next);
+        await AuthSaMiddleware(req as Request, res as Response, next);
 
         expect(res.status).toHaveBeenCalledWith(500);
         expect(res.json).toHaveBeenCalledWith(
             expect.objectContaining({
-                message: "Failed to validate item access",
+                message: "Failed to validate authorization",
             })
         );
         expect(next).not.toHaveBeenCalled();
     });
 
-    it("should call next() when all validations pass and item exists", async () => {
-        (SaApi.saApi.getItem as jest.Mock).mockResolvedValue({ id: 4 });
+    it("should call next() and set req.saUserId when user is valid", async () => {
+        (SaApi.SuperAnnotateApi.getMySAUser as jest.Mock).mockResolvedValue({ id: "user-123", email: "u@b.com" });
 
-        await saItemMiddleware(req as Request, res as Response, next);
+        await AuthSaMiddleware(req as Request, res as Response, next);
 
-        expect(SaApi.saApi.getItem).toHaveBeenCalledWith(1, 2, 3, "4", "Bearer token");
+        expect(SaApi.SuperAnnotateApi.getMySAUser).toHaveBeenCalledWith("Bearer token");
+        expect((req as any).saUserId).toBe("user-123");
+        expect((req as any).saAccessToken).toBe("Bearer token");
         expect(next).toHaveBeenCalledTimes(1);
         expect(res.status).not.toHaveBeenCalled();
     });

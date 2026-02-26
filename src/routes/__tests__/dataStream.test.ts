@@ -1,7 +1,10 @@
 import { Readable } from "stream";
 
-jest.mock("../../middleware/auth", () => ({
-    saItemMiddleware: (req: any, res: any, next: any) => next(),
+jest.mock("../../middleware/authSaMiddleware", () => ({
+    AuthSaMiddleware: (_req: any, _res: any, next: any) => next(),
+}));
+jest.mock("../../middleware/pathValidatorMiddleware", () => ({
+    PathValidatorMiddleware: (_req: any, _res: any, next: any) => next(),
 }));
 
 const mockGetDataStream = jest.fn();
@@ -15,15 +18,7 @@ jest.mock("../../repository", () => ({
     },
 }));
 
-import dataStreamRouter from "../dataStream";
-
-const validHeaders = {
-    "sa-item-id": "4",
-    "sa-team-id": "1",
-    "sa-project-id": "2",
-    "sa-folder-id": "3",
-    "sa-file-name": "document.pdf",
-};
+import dataStreamRouter from "../annotationRouter";
 
 function getHandler(method: "get" | "post") {
     const layer = dataStreamRouter.stack.find(
@@ -60,7 +55,7 @@ function createMockRes() {
     return res;
 }
 
-function createMockReq(options: { method?: string; headers?: Record<string, string>; body?: Buffer } = {}) {
+function createMockReq(options: { method?: string; headers?: Record<string, string>; body?: Buffer; saFilePath?: string } = {}) {
     const headers = options.headers || {};
     const req: any = {
         method: options.method || "GET",
@@ -69,6 +64,9 @@ function createMockReq(options: { method?: string; headers?: Record<string, stri
             return this;
         },
     };
+    if (options.saFilePath !== undefined) {
+        req.saFilePath = options.saFilePath;
+    }
     if (options.body) {
         const stream = new Readable({ read() {} });
         stream.push(options.body);
@@ -102,7 +100,7 @@ describe("dataStream routes", () => {
         it("should return 404 when stream not found", async () => {
             mockGetDataStream.mockResolvedValue(null);
             const handler = getHandler("get");
-            const req = createMockReq({ headers: validHeaders });
+            const req = createMockReq({ saFilePath: "1/2/3/4/document.pdf" });
             const res = createMockRes();
 
             await handler(req, res, () => {});
@@ -112,21 +110,21 @@ describe("dataStream routes", () => {
                 error: "Not Found",
                 message: "Data stream not found",
             });
-            expect(mockGetDataStream).toHaveBeenCalledWith(1, 2, 3, 4, "document.pdf");
+            expect(mockGetDataStream).toHaveBeenCalledWith("1/2/3/4/document.pdf");
         });
 
         it("should set stream headers when stream exists", async () => {
             const stream = new Readable({ read() {} });
             mockGetDataStream.mockResolvedValue(stream);
             const handler = getHandler("get");
-            const req = createMockReq({ headers: validHeaders });
+            const req = createMockReq({ saFilePath: "1/2/3/4/document.txt" });
             const res = createMockRes();
 
             await handler(req, res, () => {});
 
             expect(res.statusCode).toBe(200);
             expect(res._headers["Content-Type"]).toBe("text/plain");
-            expect(mockGetDataStream).toHaveBeenCalledWith(1, 2, 3, 4, "document.pdf");
+            expect(mockGetDataStream).toHaveBeenCalledWith("1/2/3/4/document.txt");
         });
     });
 
@@ -150,8 +148,8 @@ describe("dataStream routes", () => {
             mockSaveDataStream.mockResolvedValue(undefined);
             const handler = getHandler("post");
             const req = createMockReq({
-                headers: { ...validHeaders, "Content-Type": "application/octet-stream" },
                 body: Buffer.from("file content"),
+                saFilePath: "1/2/3/4/document.pdf",
             });
             const res = createMockRes();
 
@@ -163,12 +161,8 @@ describe("dataStream routes", () => {
             });
             expect(mockSaveDataStream).toHaveBeenCalledTimes(1);
             const call = mockSaveDataStream.mock.calls[0];
-            expect(call[0]).toBe(1);
-            expect(call[1]).toBe(2);
-            expect(call[2]).toBe(3);
-            expect(call[3]).toBe(4);
-            expect(call[4]).toBe("document.pdf");
-            expect(call[5]).toBeDefined();
+            expect(call[0]).toBe("1/2/3/4/document.pdf");
+            expect(call[1]).toBeDefined();
         });
     });
 });

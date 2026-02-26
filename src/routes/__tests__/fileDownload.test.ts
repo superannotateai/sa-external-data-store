@@ -1,32 +1,27 @@
-import path from "path";
-import fs from "fs";
+const mockIsFileExists = jest.fn();
+const mockGetDataStream = jest.fn();
 
-jest.mock("../../middleware/localSignValidator", () => ({
-    localSignValidator: (req: any, res: any, next: any) => {
-        (req as any).filePath = req.query?.path ? decodeURIComponent(req.query.path as string) : undefined;
-        next();
+jest.mock("../../middleware/authSaMiddleware", () => ({
+    AuthSaMiddleware: (_req: any, _res: any, next: any) => next(),
+}));
+jest.mock("../../middleware/pathValidatorMiddleware", () => ({
+    PathValidatorMiddleware: (_req: any, _res: any, next: any) => next(),
+}));
+jest.mock("../../repository", () => ({
+    __esModule: true,
+    default: {
+        isFileExists: (...args: any[]) => mockIsFileExists(...args),
+        getDataStream: (...args: any[]) => mockGetDataStream(...args),
     },
 }));
 
-jest.mock("../../utils/config", () => ({
-    Config: {
-        localStoragePath: jest.fn(() => "/mock/storage"),
-    },
-}));
-
-jest.mock("fs", () => ({
-    ...jest.requireActual("fs"),
-    existsSync: jest.fn(),
-}));
-
-import fileDownloadRouter from "../fileDownload";
-import { Config } from "../../utils/config";
+import storageRouter from "../storageRouter";
 
 function getHandler() {
-    const layer = fileDownloadRouter.stack.find(
-        (l: any) => l.route && l.route.path === "/:fileName" && l.route.methods.get
+    const layer = storageRouter.stack.find(
+        (l: any) => l.route && l.route.path === "/file" && l.route.methods.get
     );
-    if (!layer || !layer.route) throw new Error("No GET /:fileName handler found");
+    if (!layer || !layer.route) throw new Error("No GET /file handler found");
     const stack = layer.route.stack;
     return stack[stack.length - 1].handle;
 }
@@ -34,6 +29,7 @@ function getHandler() {
 function createMockRes() {
     const res: any = {
         statusCode: 200,
+        _headers: {},
         status(code: number) {
             this.statusCode = code;
             return this;
@@ -42,48 +38,32 @@ function createMockRes() {
             this._body = JSON.stringify(obj);
             return this;
         },
-        sendFile(_path: string, callback?: (err: any) => void) {
-            if (callback) callback(null);
+        setHeader(key: string, value: string) {
+            this._headers[key] = value;
             return this;
         },
+        headersSent: false,
     };
     return res;
 }
 
-function createMockReq(fileName: string, queryPath?: string) {
+function createMockReq(path?: string) {
     const req: any = {
-        params: { fileName },
-        query: queryPath ? { path: queryPath } : {},
-        filePath: queryPath ? decodeURIComponent(queryPath) : undefined,
+        saFilePath: path,
     };
     return req;
 }
 
-describe("fileDownload routes", () => {
+describe("storage file route", () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        (Config.localStoragePath as jest.Mock).mockReturnValue("/mock/storage");
     });
 
-    describe("GET /file/:fileName", () => {
-        it("should return 400 when filePath is missing (no path query)", async () => {
-            const handler = getHandler();
-            const req = createMockReq("document.pdf");
-            const res = createMockRes();
-
-            await handler(req, res, () => {});
-
-            expect(res.statusCode).toBe(400);
-            expect(JSON.parse(res._body)).toMatchObject({
-                error: "Bad Request",
-                message: "File path missing or unauthorized",
-            });
-        });
-
+    describe("GET /file", () => {
         it("should return 404 when file does not exist", async () => {
-            (fs.existsSync as jest.Mock).mockReturnValue(false);
+            mockIsFileExists.mockResolvedValue(false);
             const handler = getHandler();
-            const req = createMockReq("document.pdf", "items/1/2/3/4/document.pdf");
+            const req = createMockReq("items/1/2/file.pdf");
             const res = createMockRes();
 
             await handler(req, res, () => {});
@@ -93,30 +73,40 @@ describe("fileDownload routes", () => {
                 error: "Not Found",
                 message: "File does not exist",
             });
-            expect(fs.existsSync).toHaveBeenCalledWith(
-                path.join("/mock/storage", "items/1/2/3/4/document.pdf")
-            );
+            expect(mockGetDataStream).not.toHaveBeenCalled();
         });
 
-        it("should call sendFile when file exists", async () => {
-            (fs.existsSync as jest.Mock).mockReturnValue(true);
-            const res = createMockRes();
-            res.sendFile = jest.fn().mockImplementation((filePath: string, callback?: (err: any) => void) => {
-                if (callback) setTimeout(() => callback(null), 0);
-                return res;
-            });
+        it("should return 404 when stream is null", async () => {
+            mockIsFileExists.mockResolvedValue(true);
+            mockGetDataStream.mockResolvedValue(null);
             const handler = getHandler();
-            const req = createMockReq("document.pdf", "items/1/2/3/4/document.pdf");
+            const req = createMockReq("items/1/2/file.pdf");
+            const res = createMockRes();
 
             await handler(req, res, () => {});
 
-            expect(fs.existsSync).toHaveBeenCalledWith(
-                path.join("/mock/storage", "items/1/2/3/4/document.pdf")
-            );
-            expect(res.sendFile).toHaveBeenCalledWith(
-                path.join("/mock/storage", "items/1/2/3/4/document.pdf"),
-                expect.any(Function)
-            );
+            expect(res.statusCode).toBe(404);
+            expect(JSON.parse(res._body)).toMatchObject({
+                error: "Not Found",
+                message: "File does not exist",
+            });
+        });
+
+        it("should set content type and pipe stream when file exists", async () => {
+            const mockStream = {
+                on: jest.fn().mockReturnThis(),
+                pipe: jest.fn(),
+            };
+            mockIsFileExists.mockResolvedValue(true);
+            mockGetDataStream.mockResolvedValue(mockStream);
+            const res = createMockRes();
+            const handler = getHandler();
+            const req = createMockReq("items/1/2/file.pdf");
+
+            await handler(req, res, () => {});
+
+            expect(res._headers["Content-Type"]).toBe("application/pdf");
+            expect(mockStream.pipe).toHaveBeenCalledWith(res);
         });
     });
 });

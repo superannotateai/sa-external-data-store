@@ -1,31 +1,28 @@
-jest.mock("../../middleware/auth", () => ({
-    saItemMiddleware: (req: any, res: any, next: any) => next(),
+jest.mock("../../middleware/authSaMiddleware", () => ({
+    AuthSaMiddleware: (_req: any, _res: any, next: any) => next(),
+}));
+jest.mock("../../middleware/pathValidatorMiddleware", () => ({
+    PathValidatorMiddleware: (_req: any, _res: any, next: any) => next(),
 }));
 
 const mockGetSignedUrl = jest.fn();
+const mockIsFileExists = jest.fn();
 
 jest.mock("../../repository", () => ({
     __esModule: true,
     default: {
         getSignedUrl: (...args: any[]) => mockGetSignedUrl(...args),
+        isFileExists: (...args: any[]) => mockIsFileExists(...args),
     },
 }));
 
-import signedDownloadRouter from "../signedDownload";
-
-const validHeaders = {
-    "sa-item-id": "4",
-    "sa-team-id": "1",
-    "sa-project-id": "2",
-    "sa-folder-id": "3",
-    "sa-file-name": "document.pdf",
-};
+import storageRouter from "../storageRouter";
 
 function getHandler() {
-    const layer = signedDownloadRouter.stack.find(
-        (l: any) => l.route && l.route.path === "/" && l.route.methods.get
+    const layer = storageRouter.stack.find(
+        (l: any) => l.route && l.route.path === "/signedUrl" && l.route.methods.get
     );
-    if (!layer || !layer.route) throw new Error("No GET / handler found");
+    if (!layer || !layer.route) throw new Error("No GET /signedUrl handler found");
     const stack = layer.route.stack;
     return stack[stack.length - 1].handle;
 }
@@ -45,35 +42,28 @@ function createMockRes() {
     return res;
 }
 
-function createMockReq(headers: Record<string, string> = {}) {
-    return { headers };
+function createMockReq(headers: Record<string, string> = {}, saFilePath?: string) {
+    const req: any = {
+        headers,
+        protocol: "http",
+        get: jest.fn().mockReturnValue("localhost:3005"),
+    };
+    if (saFilePath !== undefined) {
+        req.saFilePath = saFilePath;
+    }
+    return req;
 }
 
-describe("signedDownload routes", () => {
+describe("storage signedUrl route", () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
 
-    describe("GET /dataUrl", () => {
-        it("should return 400 when required headers are missing", async () => {
+    describe("GET /signedUrl", () => {
+        it("should return 404 when file does not exist", async () => {
+            mockIsFileExists.mockResolvedValue(false);
             const handler = getHandler();
-            const req = createMockReq({ "sa-team-id": "1" });
-            const res = createMockRes();
-
-            await handler(req as any, res as any, () => {});
-
-            expect(res.statusCode).toBe(400);
-            expect(JSON.parse(res._body)).toMatchObject({
-                error: "Bad Request",
-                message: "Invalid or missing required headers",
-            });
-            expect(mockGetSignedUrl).not.toHaveBeenCalled();
-        });
-
-        it("should return 404 when signed URL not found", async () => {
-            mockGetSignedUrl.mockResolvedValue("");
-            const handler = getHandler();
-            const req = createMockReq(validHeaders);
+            const req = createMockReq({}, "1/2/3/4/document.pdf");
             const res = createMockRes();
 
             await handler(req as any, res as any, () => {});
@@ -81,24 +71,24 @@ describe("signedDownload routes", () => {
             expect(res.statusCode).toBe(404);
             expect(JSON.parse(res._body)).toMatchObject({
                 error: "Not Found",
-                message: "Signed URL not found",
+                message: "File does not exist",
             });
-            expect(mockGetSignedUrl).toHaveBeenCalledWith(1, 2, 3, 4, "document.pdf");
+            expect(mockGetSignedUrl).not.toHaveBeenCalled();
         });
 
         it("should return 200 with signedUrl when found", async () => {
             const signedUrl = "https://bucket.s3.amazonaws.com/items/1/2/3/4/document.pdf?X-Amz-...";
+            mockIsFileExists.mockResolvedValue(true);
             mockGetSignedUrl.mockResolvedValue(signedUrl);
             const handler = getHandler();
-            const req = createMockReq(validHeaders);
+            const req = createMockReq({}, "1/2/3/4/document.pdf");
             const res = createMockRes();
 
             await handler(req as any, res as any, () => {});
 
             expect(res.statusCode).toBe(200);
             expect(JSON.parse(res._body)).toMatchObject({ signedUrl });
-            expect(JSON.parse(res._body).timestamp).toBeDefined();
-            expect(mockGetSignedUrl).toHaveBeenCalledWith(1, 2, 3, 4, "document.pdf");
+            expect(mockGetSignedUrl).toHaveBeenCalledWith("1/2/3/4/document.pdf", "http://localhost:3005");
         });
     });
 });

@@ -1,55 +1,34 @@
 import https from "https";
-import { URL } from "url";
+import path from "path";
 import SafeJSON from "./functions";
-import { Config } from "./config";
+import { RequestOptions, SaAuthError, SaItem, SaUser } from "../types";
 
-/**
- * Request options for API calls
- */
-type RequestOptions = {
-    headers?: Record<string, string>;
-    queryParams?: Record<string, string | number | boolean>;
-};
+export type { SaAuthError, SaItem, SaUser } from "../types";
 
-/**
- * Error type for SuperAnnotate authentication errors
- */
-export type SaAuthError = {
-    error: {
-        name: string;
-        message: string;
-    };
-};
+const SA_ITEM_API_HOST = "item.superannotate.com";
+const SA_USER_API_HOST = "api.superannotate.com";
 
 /**
  * Client for interacting with the SuperAnnotate API
  * Handles authentication and item retrieval
  */
-class SuperAnnotateApi {
-    private baseUrl: string;
-
-    /**
-     * Creates a new SuperAnnotateApi instance
-     * Initializes the base URL from configuration
-     */
-    constructor() {
-        this.baseUrl = `https://${Config.SaAuthHost()}`;
-    }
-
+export class SuperAnnotateApi {
     /**
      * Makes an HTTP request to the SuperAnnotate API
+     * @param host - API host (e.g. item.superannotate.com)
      * @param endpoint - API endpoint path
      * @param method - HTTP method (GET, POST, PUT, DELETE)
      * @param options - Request options including headers and query parameters
      * @returns Promise resolving to the response data
      * @throws Error if the request fails or returns an error status
      */
-    private async request(
+    private static async request(
+        host: string,
         endpoint: string,
         method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
         options: RequestOptions = {}
     ): Promise<unknown> {
-        const urlObj = new URL(this.baseUrl + endpoint);
+        const urlObj = new URL("https://" + path.join(host, endpoint));
 
         // Append query parameters if present
         if (options.queryParams) {
@@ -110,7 +89,7 @@ class SuperAnnotateApi {
      * @returns Promise resolving to the item data
      * @throws SaAuthError if authentication fails or item is not found
      */
-    public async getItem(teamId: number, projectId: number, folderId: number, itemId: string, authToken: string): Promise<unknown> {
+    public static async getItem(teamId: number, projectId: number, folderId: number, itemId: number, authToken: string): Promise<SaItem> {
         // Encode entity context as base64 for the API header
         // Using Buffer instead of btoa (browser API) for Node.js compatibility
         const entityContext = SafeJSON.stringify({
@@ -120,15 +99,29 @@ class SuperAnnotateApi {
         }) ?? "{}";
         const encodedContext = Buffer.from(entityContext).toString("base64");
 
-        return this.request(`/api/v1/items/${itemId}`, "GET", {
+        const itemResponse = await SuperAnnotateApi.request(SA_ITEM_API_HOST, `/api/v1/items/${itemId.toString()}`, "GET", {
             headers: {
                 Authorization: authToken,
                 "x-sa-entity-context": encodedContext,
             },
+        }) as SaItem;
+
+        return itemResponse;
+    }
+
+    /**
+     * Retrieves the current user from SuperAnnotate API
+     * @param authToken - Authorization token (Bearer token)
+     * @returns Promise resolving to the current user data
+     * @throws SaAuthError if authentication fails
+     */
+    public static async getMySAUser(authToken: string): Promise<SaUser> {
+        const userResponse = await SuperAnnotateApi.request(SA_USER_API_HOST, `/api/v1/user/ME`, "GET", {
+            headers: {
+                Authorization: authToken,
+            },
         });
+
+        return userResponse as SaUser;
     }
 }
-
-const saApi = new SuperAnnotateApi();
-
-export { saApi };
