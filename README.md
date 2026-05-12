@@ -22,7 +22,7 @@ A Node.js/Express API service for managing data streams with AWS S3 storage back
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd deepgram
+cd sa-storage
 ```
 
 2. Install dependencies:
@@ -170,7 +170,7 @@ curl -X POST "http://localhost:3005/dataStream" \
 ## Project Structure
 
 ```
-deepgram/
+sa-storage/
 ├── src/
 │   ├── index.ts                 # Application entry point
 │   ├── middleware/
