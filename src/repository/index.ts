@@ -25,6 +25,14 @@ class Repository {
     }
 
     /**
+     * Checks connectivity to the underlying storage backend
+     * @throws Error if the storage backend is not reachable
+     */
+    public async checkConnection(): Promise<void> {
+        await this.repository?.checkConnection();
+    }
+
+    /**
      * Deletes data associated with a specific item
      * @param teamId - Team ID
      * @param projectId - Project ID

@@ -24,20 +24,15 @@ export type SaAuthError = {
 /**
  * Client for interacting with the SuperAnnotate API
  * Handles authentication and item retrieval
+ *
+ * Different SuperAnnotate services live on different subdomains of SA_HOST:
+ * - api.{SA_HOST}  - general API (e.g. /api/v1/me)
+ * - item.{SA_HOST} - item service (e.g. /api/v1/items/{id})
  */
 class SuperAnnotateApi {
-    private baseUrl: string;
-
-    /**
-     * Creates a new SuperAnnotateApi instance
-     * Initializes the base URL from configuration
-     */
-    constructor() {
-        this.baseUrl = `https://${Config.SaAuthHost()}`;
-    }
-
     /**
      * Makes an HTTP request to the SuperAnnotate API
+     * @param host - Fully qualified host (without protocol)
      * @param endpoint - API endpoint path
      * @param method - HTTP method (GET, POST, PUT, DELETE)
      * @param options - Request options including headers and query parameters
@@ -45,11 +40,12 @@ class SuperAnnotateApi {
      * @throws Error if the request fails or returns an error status
      */
     private async request(
+        host: string,
         endpoint: string,
         method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
         options: RequestOptions = {}
     ): Promise<unknown> {
-        const urlObj = new URL(this.baseUrl + endpoint);
+        const urlObj = new URL(`https://${host}${endpoint}`);
 
         // Append query parameters if present
         if (options.queryParams) {
@@ -101,7 +97,24 @@ class SuperAnnotateApi {
     }
 
     /**
+     * Retrieves the currently authenticated user from SuperAnnotate API
+     * Used as a lightweight auth-only check that does not require entity context
+     * Calls api.{SA_HOST}
+     * @param authToken - Authorization token (Bearer token)
+     * @returns Promise resolving to the current user data
+     * @throws SaAuthError if authentication fails
+     */
+    public async getMe(authToken: string): Promise<unknown> {
+        return this.request(`api.${Config.SaHost()}`, `/api/v1/user/ME`, "GET", {
+            headers: {
+                Authorization: authToken,
+            },
+        });
+    }
+
+    /**
      * Retrieves an item from SuperAnnotate API
+     * Calls item.{SA_HOST}
      * @param teamId - Team ID
      * @param projectId - Project ID
      * @param folderId - Folder ID
@@ -120,7 +133,7 @@ class SuperAnnotateApi {
         }) ?? "{}";
         const encodedContext = Buffer.from(entityContext).toString("base64");
 
-        return this.request(`/api/v1/items/${itemId}`, "GET", {
+        return this.request(`item.${Config.SaHost()}`, `/api/v1/items/${itemId}`, "GET", {
             headers: {
                 Authorization: authToken,
                 "x-sa-entity-context": encodedContext,

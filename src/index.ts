@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import chalk from "chalk";
 import dataStreamRouter from "./routes/dataStream";
+import checkRouter from "./routes/check";
 import { Config } from "./utils/config";
 
 const app = express();
@@ -24,6 +25,7 @@ if (process.env.NODE_ENV !== "production") {
 
 // Routes
 app.use("/dataStream", dataStreamRouter);
+app.use("/check", checkRouter);
 
 /**
  * Health check endpoint

@@ -72,16 +72,16 @@ export class Config {
     }
 
     /**
-     * Gets the SuperAnnotate authentication host from environment variables
+     * Gets the SuperAnnotate API host from environment variables
      * @returns SuperAnnotate API host (without protocol)
-     * @throws Error if SA_AUTH_HOST is not set
+     * @throws Error if SA_HOST is not set
      */
-    static SaAuthHost(): string {
-        if (!process.env.SA_AUTH_HOST) {
-            throw new Error("SA_AUTH_HOST is not set");
+    static SaHost(): string {
+        if (!process.env.SA_HOST) {
+            throw new Error("SA_HOST is not set");
         }
 
-        return process.env.SA_AUTH_HOST;
+        return process.env.SA_HOST;
     }
 
     /**

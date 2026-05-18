@@ -47,7 +47,8 @@ S3_SECRET_ACCESS_KEY=your-secret-access-key
 S3_REGION=us-east-1
 
 # SuperAnnotate API Configuration
-SA_AUTH_HOST=https://api.superannotate.com
+# Base domain only; the service prepends api./item. subdomains as needed
+SA_HOST=superannotate.com
 ```
 
 ## Usage
@@ -101,6 +102,42 @@ Returns server health status.
 {
   "message": "OK"
 }
+```
+
+### Dependency Check
+
+**GET** `/check`
+
+Verifies that the service can authenticate against the SuperAnnotate API (via `/api/v1/me`) and reach the configured storage backend (S3). Useful as a deeper readiness probe than `/health`. Does not require any entity context.
+
+**Headers:**
+- `sa-authorization`: SuperAnnotate access token (required)
+
+**Response:**
+- `200 OK`: Both auth and storage are healthy
+```json
+{
+  "auth": "ok",
+  "storage": "ok",
+  "timestamp": "2024-01-23T12:00:00.000Z"
+}
+```
+- `401 Unauthorized`: Missing or invalid SuperAnnotate token
+- `502 Bad Gateway`: Failed to reach the SuperAnnotate API
+- `503 Service Unavailable`: Storage backend is not reachable
+```json
+{
+  "auth": "ok",
+  "storage": "error",
+  "message": "...",
+  "timestamp": "2024-01-23T12:00:00.000Z"
+}
+```
+
+**Example:**
+```bash
+curl -X GET "http://localhost:3005/check" \
+  -H "sa-authorization: Bearer your-token"
 ```
 
 ### Get Data Stream
@@ -182,7 +219,8 @@ sa-storage/
 │   │   ├── s3Repository.ts      # S3 repository implementation
 │   │   └── __tests__/           # Repository unit tests
 │   ├── routes/
-│   │   └── dataStream.ts        # Data stream routes
+│   │   ├── dataStream.ts        # Data stream routes
+│   │   └── check.ts             # Dependency check route (auth + storage)
 │   └── utils/
 │       ├── config.ts             # Configuration management
 │       ├── s3Sdk.ts              # AWS S3 SDK wrapper

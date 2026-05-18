@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, HeadObjectCommand, GetObjectCommandOutput, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, HeadObjectCommand, HeadBucketCommand, GetObjectCommandOutput, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Readable } from "stream";
 import { Config } from "./config";
@@ -241,6 +241,19 @@ export class S3Sdk {
             lastModified: response.LastModified,
             etag: response.ETag,
         };
+    }
+
+    /**
+     * Check connectivity to the configured S3 bucket
+     * Performs a HeadBucket request to validate credentials, region, and bucket access
+     * @throws Error if the bucket is not reachable or credentials are invalid
+     */
+    public async headBucket(): Promise<void> {
+        const command = new HeadBucketCommand({
+            Bucket: this.bucketName,
+        });
+
+        await this.client.send(command);
     }
 
     /**

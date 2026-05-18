@@ -9,7 +9,7 @@ jest.mock("../../utils/config", () => ({
         s3AccessKeyId: jest.fn(() => "test-key"),
         s3SecretAccessKey: jest.fn(() => "test-secret"),
         s3Region: jest.fn(() => "us-east-1"),
-        SaAuthHost: jest.fn(() => "https://test.com"),
+        SaHost: jest.fn(() => "https://test.com"),
     },
 }));
 

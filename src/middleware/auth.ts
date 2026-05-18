@@ -10,7 +10,7 @@ import * as SaApi from "../utils/saApi";
  * - Item existence and user access permissions via SuperAnnotate API
  * 
  * Required headers:
- * - authorization: SuperAnnotate access token
+ * - sa-authorization: SuperAnnotate access token
  * - sa-team-id: Team ID
  * - sa-project-id: Project ID
  * - sa-folder-id: Folder ID
@@ -27,7 +27,7 @@ export const saItemMiddleware = async (
     next: NextFunction
 ): Promise<Response | void> => {
     // Extract required headers
-    const saAccessToken = req.headers["x-sa-authorization"] as string;
+    const saAccessToken = req.headers["sa-authorization"] as string;
     const itemId = req.headers["sa-item-id"] as string;
     const teamId = req.headers["sa-team-id"] as string;
     const projectId = req.headers["sa-project-id"] as string;

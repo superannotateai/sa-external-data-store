@@ -21,6 +21,14 @@ export class S3Repository {
     }
 
     /**
+     * Checks connectivity to the underlying S3 bucket
+     * @throws Error if the bucket is not reachable or credentials are invalid
+     */
+    public async checkConnection(): Promise<void> {
+        await this.s3Sdk.headBucket();
+    }
+
+    /**
      * Deletes data associated with a specific item
      * Deletes the metadata JSON file for the item
      * @param teamId - Team ID
