@@ -27,7 +27,7 @@ export const saItemMiddleware = async (
     next: NextFunction
 ): Promise<Response | void> => {
     // Extract required headers
-    const saAccessToken = req.headers["authorization"];
+    const saAccessToken = req.headers["x-sa-authorization"] as string;
     const itemId = req.headers["sa-item-id"] as string;
     const teamId = req.headers["sa-team-id"] as string;
     const projectId = req.headers["sa-project-id"] as string;

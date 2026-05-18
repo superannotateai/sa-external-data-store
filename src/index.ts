@@ -1,11 +1,16 @@
 import express, { Request, Response, NextFunction } from "express";
+import cors from "cors";
 import chalk from "chalk";
 import dataStreamRouter from "./routes/dataStream";
+import { Config } from "./utils/config";
 
 const app = express();
 const PORT = process.env.PORT || 3005;
 
 // Middleware
+// Enable CORS for configured allowed hosts
+app.use(cors({ origin: Config.corsAllowedHosts() }));
+
 // Parse JSON request bodies
 app.use(express.json());
 

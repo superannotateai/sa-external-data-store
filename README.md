@@ -34,6 +34,8 @@ npm install
 ```env
 # Server Configuration
 PORT=3005
+# Comma-separated list of origins allowed by CORS
+CORS_ALLOWED_HOSTS=http://localhost:3000,http://localhost:4200
 
 # Data Store Configuration
 DATA_STORE=S3
@@ -262,6 +264,7 @@ Common error codes:
 - Item access is validated against SuperAnnotate API before processing
 - AWS credentials should be stored securely (use environment variables)
 - Never commit `.env` files to version control
+- Cross-Origin Resource Sharing (CORS) is restricted to the origins listed in `CORS_ALLOWED_HOSTS` (comma-separated). Requests from any other origin are rejected by the browser. The variable is required at startup and the server will fail fast if it is not set.
 
 ## License
 

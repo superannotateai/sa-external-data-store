@@ -83,4 +83,20 @@ export class Config {
 
         return process.env.SA_AUTH_HOST;
     }
+
+    /**
+     * Gets the list of CORS allowed hosts from environment variables
+     * @returns Array of allowed origins parsed from comma-separated CORS_ALLOWED_HOSTS
+     * @throws Error if CORS_ALLOWED_HOSTS is not set
+     */
+    static corsAllowedHosts(): string[] {
+        if (!process.env.CORS_ALLOWED_HOSTS) {
+            throw new Error("CORS_ALLOWED_HOSTS is not set");
+        }
+
+        return process.env.CORS_ALLOWED_HOSTS
+            .split(",")
+            .map((host) => host.trim())
+            .filter((host) => host.length > 0);
+    }
 }
