@@ -153,6 +153,14 @@ export class LocalRepository {
         return `${host}/storage/fileSigned?path=${encodeURIComponent(path)}&expires=${expires}&signature=${signature}`;
     }
 
+    /**
+     * Verifies the local storage base directory exists and is readable/writable
+     * @throws Error if the directory cannot be accessed
+     */
+    public async checkConnection(): Promise<void> {
+        await fs.access(this.basePath, fsSync.constants.R_OK | fsSync.constants.W_OK);
+    }
+
     public async validateSignature(path: string, expires: string, signature: string): Promise<boolean> {
         const expiresTimestamp = Number(expires);
         if (!Number.isFinite(expiresTimestamp) || expiresTimestamp < Date.now()) {

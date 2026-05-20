@@ -3,6 +3,7 @@ import cors from "cors";
 import chalk from "chalk";
 import storageRouter from "./routes/storageRouter";
 import annotationRouter from "./routes/annotationRouter";
+import checkRouter from "./routes/checkRouter";
 import { sendError, errorMiddleware } from "./utils/errorHandler";
 
 const app = express();
@@ -21,6 +22,7 @@ if (process.env.NODE_ENV !== "production") {
 // Routes
 app.use("/storage", storageRouter);
 app.use("/annotation", annotationRouter);
+app.use("/check", checkRouter);
 
 /**
  * Health check endpoint

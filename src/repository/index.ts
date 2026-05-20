@@ -84,6 +84,17 @@ class Repository {
     public async validateSignature(path: string, expires: string, signature: string): Promise<boolean> {
         return this.repository?.validateSignature(path, expires, signature) ?? false;
     }
+
+    /**
+     * Verifies the storage backend is reachable and accessible
+     * @throws Error if the storage backend is not reachable or repository is not initialized
+     */
+    public async checkConnection(): Promise<void> {
+        if (!this.repository) {
+            throw new Error("Repository is not initialized");
+        }
+        await this.repository.checkConnection();
+    }
 }
 
 // Export singleton instance

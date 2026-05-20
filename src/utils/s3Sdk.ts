@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, HeadObjectCommand, GetObjectCommandOutput } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, HeadObjectCommand, HeadBucketCommand, GetObjectCommandOutput } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Readable } from "stream";
@@ -197,6 +197,15 @@ export class S3Sdk {
         });
 
         return await getSignedUrl(this.client, command, { expiresIn });
+    }
+
+    /**
+     * Verifies the S3 bucket is reachable and accessible with the configured credentials
+     * @throws Error if the bucket cannot be reached (network, auth, or NotFound)
+     */
+    public async checkConnection(): Promise<void> {
+        const command = new HeadBucketCommand({ Bucket: this.bucketName });
+        await this.client.send(command);
     }
 
     /**
