@@ -50,10 +50,12 @@ export const PathValidatorMiddleware = async (
 
     let relativeFilePath;
 
-    // If folder ID and item ID are provided, validate user has access to the item
+    // If folder ID and item ID are provided, validate user has annotation access for the folder
     if (saFolderId && saItemId) {
-        const item = await SaApi.SuperAnnotateApi.getItem(saTeamId, saProjectId, saFolderId, saItemId, saAccessToken);
-        if (!item || !item.id || !item.name) {
+        const perms = await SaApi.SuperAnnotateApi.getAnnotationPermissions(saTeamId, saProjectId, saFolderId, saAccessToken);
+        const isWriteRequest = req.method !== "GET" && req.method !== "HEAD";
+        const allowed = isWriteRequest ? perms.write : perms.read;
+        if (!allowed) {
             sendError(res, 401, "Access to item is denied", "AUTH_ACCESS_DENIED");
             return;
         }

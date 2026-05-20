@@ -1,12 +1,13 @@
 import https from "https";
 import path from "path";
 import SafeJSON from "./functions";
-import { RequestOptions, SaAuthError, SaItem, SaUser } from "../types";
+import { AnnotationPermissions, RequestOptions, SaAggregateAccessesResponse, SaAuthError, SaUser } from "../types";
 
-export type { SaAuthError, SaItem, SaUser } from "../types";
+export type { AnnotationPermissions, SaAuthError, SaUser } from "../types";
 
-const SA_ITEM_API_HOST = "item.superannotate.com";
-const SA_USER_API_HOST = "api.superannotate.com";
+const SA_ITEM_API_HOST = "item.devsuperannotate.com";
+const SA_USER_API_HOST = "api.devsuperannotate.com";
+const SA_USER_AGENT = "SA External Data Store";
 
 /**
  * Client for interacting with the SuperAnnotate API
@@ -37,9 +38,21 @@ export class SuperAnnotateApi {
             });
         }
 
+        // User-Agent is enforced for all SuperAnnotate API calls and cannot be overridden by callers
+        const headers: Record<string, string> = { ...(options.headers || {}), "User-Agent": SA_USER_AGENT };
+        let bodyBuffer: Buffer | undefined;
+        if (options.body !== undefined) {
+            const serialized = SafeJSON.stringify(options.body) ?? "";
+            bodyBuffer = Buffer.from(serialized, "utf8");
+            if (!Object.keys(headers).some((h) => h.toLowerCase() === "content-type")) {
+                headers["Content-Type"] = "application/json";
+            }
+            headers["Content-Length"] = String(bodyBuffer.length);
+        }
+
         const requestOptions: https.RequestOptions = {
             method,
-            headers: options.headers || {},
+            headers,
         };
 
         return new Promise((resolve, reject) => {
@@ -75,38 +88,12 @@ export class SuperAnnotateApi {
                 reject(e);
             });
 
+            if (bodyBuffer) {
+                req.write(bodyBuffer);
+            }
+
             req.end();
         });
-    }
-
-    /**
-     * Retrieves an item from SuperAnnotate API
-     * @param teamId - Team ID
-     * @param projectId - Project ID
-     * @param folderId - Folder ID
-     * @param itemId - Item ID
-     * @param authToken - Authorization token (Bearer token)
-     * @returns Promise resolving to the item data
-     * @throws SaAuthError if authentication fails or item is not found
-     */
-    public static async getItem(teamId: number, projectId: number, folderId: number, itemId: number, authToken: string): Promise<SaItem> {
-        // Encode entity context as base64 for the API header
-        // Using Buffer instead of btoa (browser API) for Node.js compatibility
-        const entityContext = SafeJSON.stringify({
-            team_id: teamId,
-            project_id: projectId,
-            folder_id: folderId,
-        }) ?? "{}";
-        const encodedContext = Buffer.from(entityContext).toString("base64");
-
-        const itemResponse = await SuperAnnotateApi.request(SA_ITEM_API_HOST, `/api/v1/items/${itemId.toString()}`, "GET", {
-            headers: {
-                Authorization: authToken,
-                "x-sa-entity-context": encodedContext,
-            },
-        }) as SaItem;
-
-        return itemResponse;
     }
 
     /**
@@ -123,5 +110,43 @@ export class SuperAnnotateApi {
         });
 
         return userResponse as SaUser;
+    }
+
+    /**
+     * Resolves annotation read/write permissions for the current user
+     * Calls POST item.devsuperannotate.com/api/v1/items/aggregateAccesses and
+     * inspects data.actions for GetItemAnnotation (read) and EditItemAnnotation (write)
+     * @param teamId - Team ID
+     * @param projectId - Project ID
+     * @param folderId - Folder ID
+     * @param authToken - Authorization token (Bearer token)
+     * @returns Annotation permissions ({ read, write })
+     * @throws SaAuthError if authentication fails
+     */
+    public static async getAnnotationPermissions(
+        teamId: number,
+        projectId: number,
+        folderId: number,
+        authToken: string
+    ): Promise<AnnotationPermissions> {
+        const entityContext = SafeJSON.stringify({
+            team_id: teamId,
+            project_id: projectId,
+            folder_id: folderId,
+        }) ?? "{}";
+        const encodedContext = Buffer.from(entityContext).toString("base64");
+
+        const response = await SuperAnnotateApi.request(SA_ITEM_API_HOST, `/api/v1/items/aggregateAccesses`, "POST", {
+            headers: {
+                Authorization: authToken,
+                "x-sa-entity-context": encodedContext,
+            },
+        }) as SaAggregateAccessesResponse;
+
+        const actions = response?.data?.actions ?? [];
+        return {
+            read: actions.includes("GetItemAnnotation"),
+            write: actions.includes("EditItemAnnotation"),
+        };
     }
 }
