@@ -115,8 +115,11 @@ export class LocalRepository {
      * @param stream - Readable stream containing the data to save
      * @throws Error if write fails
      */
-    public async saveDataStream(path: string, stream: Readable): Promise<void> {
-        const filePath = this.getFilePath(path);
+    public async saveDataStream(relativePath: string, stream: Readable): Promise<void> {
+        const filePath = this.getFilePath(relativePath);
+
+        // Ensure parent directory exists before writing
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
 
         // Create write stream and pipe the input stream to it
         const writeStream = fsSync.createWriteStream(filePath);
