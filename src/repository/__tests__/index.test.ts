@@ -25,9 +25,13 @@ describe("Repository", () => {
         mockS3Repository = {
             getDataStream: jest.fn(),
             saveDataStream: jest.fn(),
-            getSignedUrl: jest.fn(),
             getFilePath: jest.fn(),
             isFileExists: jest.fn(),
+            readManifest: jest.fn(),
+            filesExists: jest.fn(),
+            getFilesStream: jest.fn(),
+            getFilesSignedUrl: jest.fn(),
+            validateFilesSignature: jest.fn(),
         };
         (S3Repository as jest.MockedClass<typeof S3Repository>).mockImplementation(() => mockS3Repository);
         (Config.dataStore as jest.Mock).mockReturnValue("S3");
@@ -91,34 +95,62 @@ describe("Repository", () => {
         });
     });
 
-    describe("getSignedUrl", () => {
-        it("should return signed URL when repository returns one", async () => {
-            const path = "1/2/3/4/document.pdf";
-            const expectedUrl = "https://bucket.s3.region.amazonaws.com/items/1/2/3/4/document.pdf?X-Amz-...";
+    describe("readManifest", () => {
+        it("should delegate to the backend repository", async () => {
+            const manifest = { label: "doc", files: ["a.pdf"], metadata: null };
+            mockS3Repository.readManifest.mockResolvedValue(manifest);
 
-            mockS3Repository.getSignedUrl.mockResolvedValue(expectedUrl);
+            const result = await Repository.readManifest("1/2/3/invoice.json");
 
-            const result = await Repository.getSignedUrl(path);
+            expect(mockS3Repository.readManifest).toHaveBeenCalledWith("1/2/3/invoice.json");
+            expect(result).toBe(manifest);
+        });
 
-            expect(mockS3Repository.getSignedUrl).toHaveBeenCalledTimes(1);
-            expect(mockS3Repository.getSignedUrl).toHaveBeenCalledWith(path, undefined);
+        it("should return null when repository is null", async () => {
+            Repository.repository = null;
+
+            const result = await Repository.readManifest("1/2/3/invoice.json");
+
+            expect(result).toBeNull();
+        });
+    });
+
+    describe("getFilesSignedUrl", () => {
+        it("should delegate to the backend repository", () => {
+            const expectedUrl = "http://localhost:3005/storage/fileSigned?path=a.pdf&expires=1&signature=ab";
+            mockS3Repository.getFilesSignedUrl.mockReturnValue(expectedUrl);
+
+            const result = Repository.getFilesSignedUrl("a.pdf", "http://localhost:3005");
+
+            expect(mockS3Repository.getFilesSignedUrl).toHaveBeenCalledWith("a.pdf", "http://localhost:3005");
             expect(result).toBe(expectedUrl);
         });
 
-        it("should return empty string when repository is null", async () => {
+        it("should return empty string when repository is null", () => {
             Repository.repository = null;
 
-            const result = await Repository.getSignedUrl("1/2/3/4/file.txt");
+            const result = Repository.getFilesSignedUrl("a.pdf", "http://localhost:3005");
 
             expect(result).toBe("");
         });
+    });
 
-        it("should return empty string when repository returns empty string", async () => {
-            mockS3Repository.getSignedUrl.mockResolvedValue("");
+    describe("validateFilesSignature", () => {
+        it("should delegate to the backend repository", async () => {
+            mockS3Repository.validateFilesSignature.mockResolvedValue(true);
 
-            const result = await Repository.getSignedUrl("1/2/3/4/missing.txt");
+            const result = await Repository.validateFilesSignature("a.pdf", "123", "sig");
 
-            expect(result).toBe("");
+            expect(mockS3Repository.validateFilesSignature).toHaveBeenCalledWith("a.pdf", "123", "sig");
+            expect(result).toBe(true);
+        });
+
+        it("should return false when repository is null", async () => {
+            Repository.repository = null;
+
+            const result = await Repository.validateFilesSignature("a.pdf", "123", "sig");
+
+            expect(result).toBe(false);
         });
     });
 });

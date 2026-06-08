@@ -150,4 +150,76 @@ export class Config {
             SA_FILE_PATH: "sa-file-path",
         };
     }
+
+    /**
+     * Resolves a SuperAnnotate API host from the environment.
+     * The host is the trust anchor for all authN/authZ decisions, so it must be
+     * explicitly configured in production. A dev default is only used outside
+     * production to keep local development working.
+     * @throws Error in production when the variable is not set
+     */
+    private static saApiHost(envVar: string, devDefault: string): string {
+        const value = process.env[envVar];
+        if (value) {
+            return value;
+        }
+        if (process.env.NODE_ENV === "production") {
+            throw new Error(`${envVar} is not set`);
+        }
+        return devDefault;
+    }
+
+    /**
+     * Gets the SuperAnnotate item API host (e.g. item.superannotate.com)
+     * @returns Item API host
+     * @throws Error if SA_ITEM_API_HOST is not set in production
+     */
+    static saItemApiHost(): string {
+        return Config.saApiHost("SA_ITEM_API_HOST", "item.superannotate.com");
+    }
+
+    /**
+     * Gets the SuperAnnotate user API host (e.g. api.superannotate.com)
+     * @returns User API host
+     * @throws Error if SA_USER_API_HOST is not set in production
+     */
+    static saUserApiHost(): string {
+        return Config.saApiHost("SA_USER_API_HOST", "api.superannotate.com");
+    }
+
+    /**
+     * Gets the public-facing protocol used when building signed URLs.
+     * Defaults to "http" so local development keeps working; set PUBLIC_PROTOCOL
+     * to "https" in any environment served over TLS (e.g. behind a proxy).
+     * @returns "http" or "https"
+     */
+    static publicProtocol(): string {
+        return process.env.PUBLIC_PROTOCOL || "http";
+    }
+
+    /**
+     * Gets the public-facing host[:port] used when building signed URLs.
+     * Must be set explicitly in production so URLs don't depend on the request's
+     * (possibly proxied) Host header; a dev default keeps local development working.
+     * @returns Public host, including port when non-standard
+     * @throws Error in production when PUBLIC_HOST is not set
+     */
+    static publicHost(): string {
+        const value = process.env.PUBLIC_HOST;
+        if (value) {
+            return value;
+        }
+        if (process.env.NODE_ENV === "production") {
+            throw new Error("PUBLIC_HOST is not set");
+        }
+        return `localhost:${process.env.PORT || 3005}`;
+    }
+
+    /**
+     * Builds the public base URL (protocol + host) used as the prefix for signed URLs.
+     * @returns e.g. "https://data.example.com"
+     */
+    static publicBaseUrl(): string {
+        return `${Config.publicProtocol()}://${Config.publicHost()}`;
+    }
 }

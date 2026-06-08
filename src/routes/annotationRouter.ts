@@ -2,41 +2,33 @@ import { Router, Request, Response } from "express";
 import repository from "../repository";
 import { SaInternalRequest } from "../types";
 import { sendError } from "../utils/errorHandler";
+import { AppError } from "../types/errors";
 import { AuthSaMiddleware } from "../middleware/authSaMiddleware";
 import { PathValidatorMiddleware } from "../middleware/pathValidatorMiddleware";
-import { lookup} from "mime-types";
+import { lookup } from "mime-types";
 
 const router = Router();
 
-// Apply authorization middleware to all routes
-// This ensures all requests are authenticated and validated
+// Authenticate, then resolve the SuperAnnotate item (sets saScope + saItemName).
 router.use(AuthSaMiddleware);
-
-// Apply path validation middleware to all routes
-// This ensures all requests have a valid file path
 router.use(PathValidatorMiddleware);
 
 /**
- * GET /dataStream
- * Retrieves a data stream for a specific item
- * 
- * Headers (validated by middleware):
- * - sa-team-id: Team ID
- * - sa-project-id: Project ID
- * - sa-folder-id: Folder ID
- * - sa-item-id: Item ID
- * 
- * Returns: Stream of data or error response
+ * Builds the items-relative path of the annotation file for the resolved item:
+ * {scope}/<item_name>_annotation.json
+ */
+function annotationPath(req: Request): string {
+    const { saScope, saItemName } = req as SaInternalRequest;
+    return `${saScope}/${saItemName}_annotation.json`;
+}
+
+/**
+ * GET /annotation/
+ * Streams the annotation file for the resolved SuperAnnotate item.
+ * Item identity/access is established by PathValidatorMiddleware.
  */
 router.get("/", async (req: Request, res: Response) => {
-    // Parse headers (already validated by middleware, but ensure they're numbers)
-    const filePath = (req as SaInternalRequest).saFilePath;
-
-    // Additional validation (should not happen if middleware works correctly)
-    if (!filePath) {
-        sendError(res, 400, "Invalid or missing required headers", "VALIDATION_MISSING_HEADERS");
-        return;
-    }
+    const filePath = annotationPath(req);
 
     try {
         const stream = await repository.getDataStream(filePath);
@@ -46,24 +38,19 @@ router.get("/", async (req: Request, res: Response) => {
             return;
         }
 
-        // Set appropriate headers for streaming response
         const mimeType = lookup(filePath) || "application/octet-stream";
         res.setHeader("Content-Type", mimeType);
         res.setHeader("Transfer-Encoding", "chunked");
 
-        // Stream data to client
         stream.on("data", (chunk: Buffer) => {
-            console.log(">>> DATA CHUNK >>>");
             res.write(chunk);
         });
 
         stream.on("end", () => {
-            console.log(">>> END STREAM >>>");
             res.end();
         });
 
-        stream.on("error", (error: Error) => {
-            console.error("Stream error:", error);
+        stream.on("error", () => {
             if (!res.headersSent) {
                 sendError(res, 500, "Error streaming data");
             } else {
@@ -71,46 +58,31 @@ router.get("/", async (req: Request, res: Response) => {
             }
         });
     } catch (error) {
-        console.error("Error getting data stream:", error);
         if (!res.headersSent) {
+            if (error instanceof AppError) {
+                sendError(res, error.statusCode, error.message, error.code);
+                return;
+            }
             sendError(res, 500, "Failed to get data stream");
         }
     }
 });
 
 /**
- * POST /dataStream
- * Uploads a data stream for a specific item
- * 
- * Headers (validated by middleware):
- * - sa-team-id: Team ID
- * - sa-project-id: Project ID
- * - sa-folder-id: Folder ID
- * - sa-item-id: Item ID
- * 
- * Body: Raw stream data
- * 
- * Returns: Success message or error response
+ * POST /annotation/
+ * Saves the request body stream as the annotation file for the resolved item.
+ * Write permission is enforced by PathValidatorMiddleware.
  */
 router.post("/", async (req: Request, res: Response) => {
-    // Parse headers (already validated by middleware, but ensure they're numbers)
-    const filePath = (req as SaInternalRequest).saFilePath;
-
-    // Additional validation (should not happen if middleware works correctly)
-    if (!filePath) {
-        sendError(res, 400, "Invalid or missing required headers", "VALIDATION_MISSING_HEADERS");
-        return;
-    }
+    const filePath = annotationPath(req);
 
     try {
-        req.on("error", (error: Error) => {
-            console.error("Request stream error:", error);
+        req.on("error", () => {
             if (!res.headersSent) {
                 sendError(res, 500, "Error reading request stream");
             }
         });
 
-        // Save the stream to repository
         await repository.saveDataStream(filePath, req);
 
         res.status(200).json({
@@ -118,12 +90,14 @@ router.post("/", async (req: Request, res: Response) => {
             timestamp: new Date().toISOString(),
         });
     } catch (error) {
-        console.error("Error processing data stream:", error);
         if (!res.headersSent) {
+            if (error instanceof AppError) {
+                sendError(res, error.statusCode, error.message, error.code);
+                return;
+            }
             sendError(res, 500, "Failed to process data stream");
         }
     }
 });
 
 export default router;
-

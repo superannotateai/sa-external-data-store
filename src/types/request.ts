@@ -9,8 +9,13 @@ export type SaAuthorizedRequest = Request & {
 };
 
 /**
- * Request extended with SA file path (set by item path middleware)
+ * Request extended with the resolved SuperAnnotate item location
+ * (set by PathValidatorMiddleware after an authoritative SA lookup).
+ *
+ * - saScope: "{teamId}/{projectId}/{folderId}" (numeric, safe segments)
+ * - saItemName: the validated, single-segment item name from SuperAnnotate
  */
 export type SaInternalRequest = SaAuthorizedRequest & {
-    saFilePath: string;
+    saScope: string;
+    saItemName: string;
 };

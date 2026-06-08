@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import * as SaApi from "../utils/saApi";
 import { SaAuthorizedRequest, ErrorCode } from "../types";
+import { SaApiError } from "../types/errors";
 import { sendError } from "../utils/errorHandler";
 import { Config } from "../utils/config";
 
@@ -43,11 +44,23 @@ export const AuthSaMiddleware = async ( req: Request, res: Response, next: NextF
         // All validations passed, proceed to route handler
         next();
     } catch (error) {
+        // Prefer the upstream HTTP status: 401/403 from SuperAnnotate mean the
+        // token is invalid or cannot authenticate -> 401, not a server error.
+        if (error instanceof SaApiError) {
+            if (error.statusCode === 401 || error.statusCode === 403) {
+                sendError(res, 401, "Invalid or expired authorization token", ErrorCode.AUTH_INVALID_TOKEN);
+                return;
+            }
+            sendError(res, 500, "Failed to validate authorization", ErrorCode.INTERNAL_SERVER_ERROR);
+            return;
+        }
+        // Legacy/typed auth-exception body fallback.
         const authError = error as SaApi.SaAuthError;
         if (authError?.error?.name === "AuthException") {
             sendError(res, 401, "Invalid or expired authorization token", ErrorCode.AUTH_INVALID_TOKEN);
             return;
         }
+        // Transport / unexpected failure talking to SuperAnnotate.
         sendError(res, 500, "Failed to validate authorization", ErrorCode.INTERNAL_SERVER_ERROR);
     }
 };

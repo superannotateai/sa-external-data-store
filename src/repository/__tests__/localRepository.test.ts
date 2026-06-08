@@ -1,5 +1,6 @@
 import { LocalRepository } from "../localRepository";
 import { Config } from "../../utils/config";
+import { AppError } from "../../types/errors";
 import { Readable } from "stream";
 import * as fs from "fs/promises";
 import * as fsSync from "fs";
@@ -284,6 +285,30 @@ describe("LocalRepository", () => {
 
         it("should throw when host is not provided", async () => {
             await expect(localRepository.getSignedUrl("1/2/3/4/file.txt")).rejects.toThrow("Host is required");
+        });
+
+        it("should reject path traversal when signing", async () => {
+            await expect(
+                localRepository.getSignedUrl("../../../../../../etc/passwd", "http://localhost:3005")
+            ).rejects.toThrow(AppError);
+        });
+    });
+
+    describe("path traversal protection", () => {
+        it("should reject traversal in getDataStream", async () => {
+            await expect(localRepository.getDataStream("../../../../../../etc/passwd")).rejects.toThrow(AppError);
+        });
+
+        it("should return false from validateSignature for traversal paths", async () => {
+            (Config as any).localSignSecretKey = jest.fn().mockReturnValue("secret");
+
+            const valid = await localRepository.validateSignature(
+                "../../../../../../etc/passwd",
+                String(Date.now() + 60_000),
+                "00".repeat(32)
+            );
+
+            expect(valid).toBe(false);
         });
     });
 });

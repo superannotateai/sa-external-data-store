@@ -1,12 +1,18 @@
 import https from "https";
 import path from "path";
 import SafeJSON from "./functions";
-import { AnnotationPermissions, RequestOptions, SaAggregateAccessesResponse, SaAuthError, SaUser } from "../types";
+import { Config } from "./config";
+import { AnnotationPermissions, RequestOptions, SaAggregateAccessesResponse, SaAuthError, SaItem, SaUser } from "../types";
+import { SaApiError } from "../types/errors";
 
-export type { AnnotationPermissions, SaAuthError, SaUser } from "../types";
+export type { AnnotationPermissions, SaAuthError, SaItem, SaUser } from "../types";
+export { SaApiError } from "../types/errors";
 
-const SA_ITEM_API_HOST = "item.devsuperannotate.com";
-const SA_USER_API_HOST = "api.devsuperannotate.com";
+// Resolved once at startup: the SuperAnnotate hosts are static for the process
+// lifetime. This also fails fast on misconfiguration (e.g. missing host in
+// production) instead of erroring on the first request.
+const SA_ITEM_API_HOST = Config.saItemApiHost();
+const SA_USER_API_HOST = Config.saUserApiHost();
 const SA_USER_AGENT = "SA External Data Store";
 
 /**
@@ -64,19 +70,17 @@ export class SuperAnnotateApi {
 
                 res.on("end", () => {
                     try {
+                        const statusCode = res.statusCode ?? 0;
                         const contentType = res.headers["content-type"];
-                        if (contentType && contentType.includes("application/json")) {
-                            if (res?.statusCode && res?.statusCode >= 400) {
-                                reject(SafeJSON.parse(data));
-                            } else {
-                                resolve(SafeJSON.parse(data));
-                            }
+                        const isJson = !!contentType && contentType.includes("application/json");
+                        const body: unknown = isJson ? SafeJSON.parse(data) : data;
+
+                        if (statusCode >= 400) {
+                            // Surface the HTTP status so callers can map it correctly
+                            // instead of inferring intent from the body shape.
+                            reject(new SaApiError(statusCode, body));
                         } else {
-                            if (res?.statusCode && res?.statusCode >= 400) {
-                                reject(data);
-                            } else {
-                                resolve(data);
-                            }
+                            resolve(body);
                         }
                     } catch (e) {
                         reject(e);
@@ -110,6 +114,36 @@ export class SuperAnnotateApi {
         });
 
         return userResponse as SaUser;
+    }
+
+    /**
+     * Retrieves an item from SuperAnnotate API
+     * @param teamId - Team ID
+     * @param projectId - Project ID
+     * @param folderId - Folder ID
+     * @param itemId - Item ID
+     * @param authToken - Authorization token (Bearer token)
+     * @returns Promise resolving to the item data
+     * @throws SaAuthError if authentication fails or item is not found
+     */
+    public static async getItem(teamId: number, projectId: number, folderId: number, itemId: number, authToken: string): Promise<SaItem> {
+        // Encode entity context as base64 for the API header
+        // Using Buffer instead of btoa (browser API) for Node.js compatibility
+        const entityContext = SafeJSON.stringify({
+            team_id: teamId,
+            project_id: projectId,
+            folder_id: folderId,
+        }) ?? "{}";
+        const encodedContext = Buffer.from(entityContext).toString("base64");
+
+        const itemResponse = await SuperAnnotateApi.request(SA_ITEM_API_HOST, `/api/v1/items/${itemId.toString()}`, "GET", {
+            headers: {
+                Authorization: authToken,
+                "x-sa-entity-context": encodedContext,
+            },
+        }) as SaItem;
+
+        return itemResponse;
     }
 
     /**

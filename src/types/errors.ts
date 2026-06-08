@@ -30,11 +30,30 @@ export class AppError extends Error {
     }
 }
 
+/**
+ * Error thrown by the SuperAnnotate API client when the upstream returns a
+ * non-2xx HTTP status. Carries the status code so callers can map it to the
+ * correct client-facing response (instead of guessing from the body shape).
+ */
+export class SaApiError extends Error {
+    public readonly statusCode: number;
+    public readonly body: unknown;
+
+    constructor(statusCode: number, body: unknown) {
+        super(`SuperAnnotate API error (${statusCode})`);
+        this.name = "SaApiError";
+        this.statusCode = statusCode;
+        this.body = body;
+        Object.setPrototypeOf(this, SaApiError.prototype);
+    }
+}
+
 export enum ErrorCode {
     AUTH_MISSING_TOKEN = "AUTH_MISSING_TOKEN",
     AUTH_INVALID_TOKEN = "AUTH_INVALID_TOKEN",
     VALIDATION_MISSING_HEADERS = "VALIDATION_MISSING_HEADERS",
     VALIDATION_MISSING_PATH = "VALIDATION_MISSING_PATH",
+    VALIDATION_INVALID_PATH = "VALIDATION_INVALID_PATH",
     NOT_FOUND_FILE = "NOT_FOUND_FILE",
     INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR",
 }

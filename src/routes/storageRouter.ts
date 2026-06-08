@@ -3,107 +3,138 @@ import { lookup } from "mime-types";
 import { AuthSaMiddleware } from "../middleware/authSaMiddleware";
 import { PathValidatorMiddleware } from "../middleware/pathValidatorMiddleware";
 import { SaInternalRequest } from "../types";
+import { AppError } from "../types/errors";
 import { sendError } from "../utils/errorHandler";
+import { isSafeSegment } from "../utils/pathSafety";
+import { Config } from "../utils/config";
 import repository from "../repository";
 
 const router = Router();
 
 /**
- * GET /file
- * Serves a file by path after validating signed URL (path, expires, signature).
- * Headers (validated by filePathMiddleware): sa-team-id, sa-project-id, sa-file-path
- * @returns File stream or standardized error response
+ * MIME types that are safe to render inline in a browser: static, non-active
+ * content (raster images, audio/video, PDF). Everything else — including
+ * image/svg+xml, text/html, XML, and unknown types — is forced to download so
+ * it cannot execute as a same-origin document. Programmatic SDK clients read the
+ * body regardless of disposition, so both consumption flows keep working.
  */
-router.get("/file", AuthSaMiddleware, PathValidatorMiddleware, async (req: Request, res: Response) => {
-    const { saFilePath } = (req as SaInternalRequest);
+const INLINE_SAFE_TYPES = new Set<string>([
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/bmp",
+    "audio/mpeg",
+    "audio/ogg",
+    "audio/wav",
+    "video/mp4",
+    "video/webm",
+    "video/ogg",
+    "application/pdf",
+]);
+
+/**
+ * GET /storage/
+ * Resolves the SuperAnnotate item (via PathValidatorMiddleware), reads its
+ * owner-curated access map (access_maps/{teamId}/{projectId}/<name>.json), and
+ * returns signed capability URLs for each declared raw asset. The map's `files`
+ * array is the allowlist: only files it declares can ever be signed.
+ *
+ * @returns 200 { label, files: { <fileName>: signedUrl }, metadata } or error
+ */
+router.get("/", AuthSaMiddleware, PathValidatorMiddleware, async (req: Request, res: Response) => {
+    const { saScope, saItemName } = req as SaInternalRequest;
+    // Access maps are project-scoped (team/project), independent of the item's
+    // folder, so they can be authored before the folder is known.
+    const projectScope = saScope.split("/").slice(0, 2).join("/");
+
     try {
-        console.log("saFilePath", saFilePath);
-        const isFileExists = await repository.isFileExists(saFilePath);
-        if (!isFileExists) {
-            sendError(res, 404, "File does not exist", "NOT_FOUND_FILE");
+        const manifest = await repository.readAccessMap(projectScope, saItemName);
+        if (!manifest) {
+            sendError(res, 404, "Item access map not found", "NOT_FOUND_MANIFEST");
             return;
         }
-        const mimeType = lookup(saFilePath) || "application/octet-stream";
-        res.setHeader("Content-Type", mimeType);
-        const stream = await repository.getDataStream(saFilePath);
-        if (!stream) {
-            sendError(res, 404, "File does not exist", "NOT_FOUND_FILE");
-            return;
+
+        const host = Config.publicBaseUrl();
+        const files: Record<string, string> = {};
+        for (const entry of manifest.files) {
+            // Each manifest entry becomes a path segment under the files root.
+            if (!isSafeSegment(entry)) {
+                sendError(res, 500, "Invalid manifest entry", "INTERNAL_ERROR");
+                return;
+            }
+            files[entry] = repository.getFilesSignedUrl(entry, host);
         }
-        stream.on("error", () => {
-            if (!res.headersSent) sendError(res, 500, "Failed to send file");
+
+        return res.status(200).json({
+            label: manifest.label,
+            files,
+            metadata: manifest.metadata,
         });
-        stream.pipe(res);
     } catch (error) {
-        if (!res.headersSent) {
-            sendError(res, 500, "Failed to get data stream");
+        if (error instanceof AppError) {
+            sendError(res, error.statusCode, error.message, error.code);
+            return;
         }
+        sendError(res, 500, "Failed to read item manifest");
     }
 });
 
 /**
- * GET /fileSigned
- * Serves a file by path after validating signed URL (path, expires, signature).
+ * GET /storage/fileSigned
+ * Redeems a signed capability and streams a raw asset from the files root.
+ * Stateless: verified by HMAC + expiry only, no SuperAnnotate or DB lookup.
+ *
  * @returns File stream or standardized error response
  */
 router.get("/fileSigned", async (req: Request, res: Response) => {
-    const { path, expires, signature } = req.query as { path?: string, expires?: string, signature?: string };
+    const { path, expires, signature } = req.query as { path?: string; expires?: string; signature?: string };
     if (!path || !expires || !signature) {
         sendError(res, 400, "Missing required query parameters", "MISSING_QUERY_PARAMETERS");
         return;
     }
-    const isValidSignature = await repository.validateSignature(path, expires, signature);
+
+    const isValidSignature = await repository.validateFilesSignature(path, expires, signature);
     if (!isValidSignature) {
         sendError(res, 401, "Invalid signature", "INVALID_SIGNATURE");
         return;
     }
-    const signedFilePath = decodeURIComponent(path);
+
     try {
-        const isFileExists = await repository.isFileExists(signedFilePath);
-        if (!isFileExists) {
-            sendError(res, 404, "File does not exist", "NOT_FOUND_FILE");
-            return;
-        }
-        const mimeType = lookup(signedFilePath) || "application/octet-stream";
-        res.setHeader("Content-Type", mimeType);
-        const stream = await repository.getDataStream(signedFilePath);
+        const stream = await repository.getFilesStream(path);
         if (!stream) {
             sendError(res, 404, "File does not exist", "NOT_FOUND_FILE");
             return;
         }
+
+        // Never let the browser MIME-sniff: the declared type is authoritative.
+        res.setHeader("X-Content-Type-Options", "nosniff");
+
+        const detectedType = lookup(path) || "application/octet-stream";
+        if (INLINE_SAFE_TYPES.has(detectedType)) {
+            // Static, non-active content: safe to preview inline.
+            res.setHeader("Content-Type", detectedType);
+            res.setHeader("Content-Disposition", "inline");
+        } else {
+            // Active or unknown types (e.g. SVG/HTML): force download so they
+            // cannot execute as a same-origin document.
+            res.setHeader("Content-Type", "application/octet-stream");
+            res.setHeader("Content-Disposition", "attachment");
+        }
+
         stream.on("error", () => {
             if (!res.headersSent) sendError(res, 500, "Failed to send file");
         });
         stream.pipe(res);
     } catch (error) {
         if (!res.headersSent) {
+            if (error instanceof AppError) {
+                sendError(res, error.statusCode, error.message, error.code);
+                return;
+            }
             sendError(res, 500, "Failed to get data stream");
         }
     }
 });
 
-/**
- * GET /signedUrl
- * Returns a signed URL for the item identified by SA headers (sa-team-id, sa-project-id, sa-folder-id, sa-item-id).
- * Requires saAuthMiddleware and itemPathMiddleware.
- * @returns 200 with { signedUrl } or error response
- */
-router.get("/signedUrl", AuthSaMiddleware, PathValidatorMiddleware, async (req: Request, res: Response) => {
-    
-    const protocol = req.protocol;
-    const hostWithPort = req.get('host'); // e.g., 'localhost:3000'
-    const fullUrl = `${protocol}://${hostWithPort}`;
-
-    const { saFilePath } = req as SaInternalRequest;
-    
-    const isFileExists = await repository.isFileExists(saFilePath);
-    if (!isFileExists) {
-        sendError(res, 404, "File does not exist", "NOT_FOUND_FILE");
-        return;
-    }
-    const signedUrl = await repository.getSignedUrl(saFilePath, fullUrl);
-    return res.status(200).json({ signedUrl: signedUrl });
-});
-
 export default router;
-

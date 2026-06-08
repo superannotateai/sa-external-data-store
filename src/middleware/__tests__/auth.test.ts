@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { AuthSaMiddleware } from "../authSaMiddleware";
 import * as SaApi from "../../utils/saApi";
+import { SaApiError } from "../../types/errors";
 import { Config } from "../../utils/config";
 
 jest.mock("../../utils/saApi", () => ({
@@ -105,6 +106,30 @@ describe("AuthSaMiddleware", () => {
             expect.objectContaining({
                 message: "Failed to validate authorization",
             })
+        );
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it.each([401, 403])("should return 401 when SuperAnnotate responds with %s", async (status) => {
+        (SaApi.SuperAnnotateApi.getMySAUser as jest.Mock).mockRejectedValue(new SaApiError(status, { message: "nope" }));
+
+        await AuthSaMiddleware(req as Request, res as Response, next);
+
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ message: "Invalid or expired authorization token" })
+        );
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it("should return 500 when SuperAnnotate responds with a 5xx", async () => {
+        (SaApi.SuperAnnotateApi.getMySAUser as jest.Mock).mockRejectedValue(new SaApiError(503, "upstream down"));
+
+        await AuthSaMiddleware(req as Request, res as Response, next);
+
+        expect(res.status).toHaveBeenCalledWith(500);
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ message: "Failed to validate authorization" })
         );
         expect(next).not.toHaveBeenCalled();
     });

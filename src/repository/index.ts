@@ -1,7 +1,7 @@
 import { S3Repository } from "./s3Repository";
 import { LocalRepository } from "./localRepository";
 import { Config } from "../utils/config";
-import { DataStoreType } from "../types";
+import { DataStoreType, SaItemManifest } from "../types";
 import { Readable } from "stream";
 
 /**
@@ -48,15 +48,6 @@ class Repository {
     }
 
     /**
-     * Retrieves a signed URL for a path
-     * @param path - Relative path to the file
-     * @returns Signed URL string
-     */
-    public async getSignedUrl(path: string, host?: string): Promise<string> {
-        return this.repository?.getSignedUrl(path, host) ?? "";
-    }
-
-    /**
      * Retrieves the full file path for a specific item
      * @param path - Relative path to the file
      * @returns Full file path
@@ -75,14 +66,51 @@ class Repository {
     }
 
     /**
-     * Validates signed URL parameters for storage backends that support local HMAC signatures
-     * @param path - Relative path to the file
-     * @param expires - Expiration timestamp in milliseconds
-     * @param signature - HMAC signature
-     * @returns true if signature is valid, false otherwise
+     * Reads and parses an item manifest (items/{scope}/<name>.json).
+     * @param itemsRelativePath - Path relative to the items root
+     * @returns Parsed manifest, or null if it does not exist
      */
-    public async validateSignature(path: string, expires: string, signature: string): Promise<boolean> {
-        return this.repository?.validateSignature(path, expires, signature) ?? false;
+    public async readManifest(itemsRelativePath: string): Promise<SaItemManifest | null> {
+        return this.repository?.readManifest(itemsRelativePath) ?? null;
+    }
+
+    /**
+     * Reads an owner-curated access map for an item, keyed by project scope and
+     * item name (access_maps/{teamId}/{projectId}/<item_name>.json).
+     * @param projectScope - "{teamId}/{projectId}"
+     * @param itemName - validated, single-segment SuperAnnotate item name
+     * @returns Parsed access map, or null if it does not exist
+     */
+    public async readAccessMap(projectScope: string, itemName: string): Promise<SaItemManifest | null> {
+        return this.repository?.readAccessMap(projectScope, itemName) ?? null;
+    }
+
+    /**
+     * Checks if a raw asset exists under the files root.
+     */
+    public async filesExists(filesRelativePath: string): Promise<boolean> {
+        return this.repository?.filesExists(filesRelativePath) ?? false;
+    }
+
+    /**
+     * Streams a raw asset from under the files root.
+     */
+    public async getFilesStream(filesRelativePath: string): Promise<NodeJS.ReadableStream | null> {
+        return this.repository?.getFilesStream(filesRelativePath) ?? null;
+    }
+
+    /**
+     * Mints a signed capability URL for a raw asset under the files root.
+     */
+    public getFilesSignedUrl(filesRelativePath: string, host: string): string {
+        return this.repository?.getFilesSignedUrl(filesRelativePath, host) ?? "";
+    }
+
+    /**
+     * Verifies a signed capability for a raw asset under the files root.
+     */
+    public async validateFilesSignature(filesRelativePath: string, expires: string, signature: string): Promise<boolean> {
+        return this.repository?.validateFilesSignature(filesRelativePath, expires, signature) ?? false;
     }
 
     /**

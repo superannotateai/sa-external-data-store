@@ -40,3 +40,22 @@ export type SaAggregateAccessesResponse = {
         actions: string[];
     };
 };
+
+/** SuperAnnotate item (from items API) */
+export type SaItem = {
+    id: string;
+    name: string;
+    createdAt: string;
+    updatedAt: string;
+};
+
+/**
+ * Manifest stored at items/{team}/{project}/{folder}/<item_name>.json.
+ * `files` is the authoritative allowlist of raw assets (under the files/ root)
+ * that belong to the item and may be signed for download.
+ */
+export type SaItemManifest = {
+    label?: string;
+    files: string[];
+    metadata?: unknown;
+};
