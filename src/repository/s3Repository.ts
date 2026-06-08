@@ -101,4 +101,12 @@ export class S3Repository {
         // S3 signed URLs are validated by AWS at request time.
         return true;
     }
+
+    /**
+     * Verifies the S3 bucket is reachable with the configured credentials
+     * @throws Error if the bucket cannot be reached
+     */
+    public async checkConnection(): Promise<void> {
+        await this.s3Sdk.checkConnection();
+    }
 }

@@ -4,6 +4,13 @@
 export type RequestOptions = {
     headers?: Record<string, string>;
     queryParams?: Record<string, string | number | boolean>;
+    body?: unknown;
+};
+
+/** Annotation permissions resolved from SuperAnnotate aggregate accesses */
+export type AnnotationPermissions = {
+    read: boolean;
+    write: boolean;
 };
 
 /**
@@ -27,10 +34,9 @@ export type SaUser = {
     updatedAt: string;
 };
 
-/** SuperAnnotate item (from items API) */
-export type SaItem = {
-    id: string;
-    name: string;
-    createdAt: string;
-    updatedAt: string;
+/** Response shape from POST /api/v1/items/aggregateAccesses */
+export type SaAggregateAccessesResponse = {
+    data: {
+        actions: string[];
+    };
 };

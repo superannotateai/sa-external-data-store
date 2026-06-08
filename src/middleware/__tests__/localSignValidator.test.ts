@@ -17,7 +17,7 @@ jest.mock("../../utils/config", () => ({
 
 jest.mock("../../utils/saApi", () => ({
     SuperAnnotateApi: {
-        getItem: jest.fn(),
+        getAnnotationPermissions: jest.fn(),
     },
 }));
 
@@ -37,6 +37,7 @@ describe("PathValidatorMiddleware", () => {
         });
         req = {
             headers: {},
+            method: "GET",
             saAccessToken: "Bearer token",
         };
         res = {
@@ -84,33 +85,51 @@ describe("PathValidatorMiddleware", () => {
 
         expect((req as any).saFilePath).toBe("1/2/folder/file.json");
         expect(next).toHaveBeenCalledTimes(1);
-        expect(SaApi.SuperAnnotateApi.getItem).not.toHaveBeenCalled();
+        expect(SaApi.SuperAnnotateApi.getAnnotationPermissions).not.toHaveBeenCalled();
     });
 
-    it("should set annotation path when folder and item headers are valid", async () => {
+    it("should set annotation path on GET when read permission is granted", async () => {
+        req.method = "GET";
         req.headers = {
             "sa-team-id": "1",
             "sa-project-id": "2",
             "sa-folder-id": "3",
             "sa-item-id": "4",
         };
-        (SaApi.SuperAnnotateApi.getItem as jest.Mock).mockResolvedValue({ id: 4, name: "annotation item" });
+        (SaApi.SuperAnnotateApi.getAnnotationPermissions as jest.Mock).mockResolvedValue({ read: true, write: false });
 
         await PathValidatorMiddleware(req as Request, res as Response, next);
 
-        expect(SaApi.SuperAnnotateApi.getItem).toHaveBeenCalledWith(1, 2, 3, 4, "Bearer token");
+        expect(SaApi.SuperAnnotateApi.getAnnotationPermissions).toHaveBeenCalledWith(1, 2, 3, "Bearer token");
         expect((req as any).saFilePath).toBe("1/2/3/4/annotation.json");
         expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it("should return 401 when item lookup fails", async () => {
+    it("should set annotation path on POST when write permission is granted", async () => {
+        req.method = "POST";
         req.headers = {
             "sa-team-id": "1",
             "sa-project-id": "2",
             "sa-folder-id": "3",
             "sa-item-id": "4",
         };
-        (SaApi.SuperAnnotateApi.getItem as jest.Mock).mockResolvedValue(null);
+        (SaApi.SuperAnnotateApi.getAnnotationPermissions as jest.Mock).mockResolvedValue({ read: false, write: true });
+
+        await PathValidatorMiddleware(req as Request, res as Response, next);
+
+        expect((req as any).saFilePath).toBe("1/2/3/4/annotation.json");
+        expect(next).toHaveBeenCalledTimes(1);
+    });
+
+    it("should return 401 on GET when read permission is denied", async () => {
+        req.method = "GET";
+        req.headers = {
+            "sa-team-id": "1",
+            "sa-project-id": "2",
+            "sa-folder-id": "3",
+            "sa-item-id": "4",
+        };
+        (SaApi.SuperAnnotateApi.getAnnotationPermissions as jest.Mock).mockResolvedValue({ read: false, write: true });
 
         await PathValidatorMiddleware(req as Request, res as Response, next);
 
@@ -121,14 +140,33 @@ describe("PathValidatorMiddleware", () => {
         expect(next).not.toHaveBeenCalled();
     });
 
-    it("should propagate AuthException from item API", async () => {
+    it("should return 401 on POST when write permission is denied", async () => {
+        req.method = "POST";
         req.headers = {
             "sa-team-id": "1",
             "sa-project-id": "2",
             "sa-folder-id": "3",
             "sa-item-id": "4",
         };
-        (SaApi.SuperAnnotateApi.getItem as jest.Mock).mockRejectedValue({
+        (SaApi.SuperAnnotateApi.getAnnotationPermissions as jest.Mock).mockResolvedValue({ read: true, write: false });
+
+        await PathValidatorMiddleware(req as Request, res as Response, next);
+
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ message: "Access to item is denied" })
+        );
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it("should propagate AuthException from permissions API", async () => {
+        req.headers = {
+            "sa-team-id": "1",
+            "sa-project-id": "2",
+            "sa-folder-id": "3",
+            "sa-item-id": "4",
+        };
+        (SaApi.SuperAnnotateApi.getAnnotationPermissions as jest.Mock).mockRejectedValue({
             error: { name: "AuthException" },
         });
 
@@ -139,7 +177,7 @@ describe("PathValidatorMiddleware", () => {
         expect(next).not.toHaveBeenCalled();
     });
 
-    it("should propagate unexpected item API errors", async () => {
+    it("should propagate unexpected permissions API errors", async () => {
         req.headers = {
             "sa-team-id": "1",
             "sa-project-id": "2",
@@ -147,7 +185,7 @@ describe("PathValidatorMiddleware", () => {
             "sa-item-id": "4",
         };
         const error = new Error("network");
-        (SaApi.SuperAnnotateApi.getItem as jest.Mock).mockRejectedValue(error);
+        (SaApi.SuperAnnotateApi.getAnnotationPermissions as jest.Mock).mockRejectedValue(error);
 
         await expect(
             PathValidatorMiddleware(req as Request, res as Response, next)

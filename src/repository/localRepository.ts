@@ -115,8 +115,11 @@ export class LocalRepository {
      * @param stream - Readable stream containing the data to save
      * @throws Error if write fails
      */
-    public async saveDataStream(path: string, stream: Readable): Promise<void> {
-        const filePath = this.getFilePath(path);
+    public async saveDataStream(relativePath: string, stream: Readable): Promise<void> {
+        const filePath = this.getFilePath(relativePath);
+
+        // Ensure parent directory exists before writing
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
 
         // Create write stream and pipe the input stream to it
         const writeStream = fsSync.createWriteStream(filePath);
@@ -151,6 +154,14 @@ export class LocalRepository {
         // Construct the full URL for the client
         // The client will use this URL to request the file
         return `${host}/storage/fileSigned?path=${encodeURIComponent(path)}&expires=${expires}&signature=${signature}`;
+    }
+
+    /**
+     * Verifies the local storage base directory exists and is readable/writable
+     * @throws Error if the directory cannot be accessed
+     */
+    public async checkConnection(): Promise<void> {
+        await fs.access(this.basePath, fsSync.constants.R_OK | fsSync.constants.W_OK);
     }
 
     public async validateSignature(path: string, expires: string, signature: string): Promise<boolean> {
