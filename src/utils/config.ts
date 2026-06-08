@@ -130,6 +130,14 @@ export class Config {
     }
 
     /**
+     * Gets the SuperAnnotate base domain from environment variables
+     * @returns SuperAnnotate base domain (defaults to "superannotate.com")
+     */
+    static saDomain(): string {
+        return process.env.SA_DOMAIN || "superannotate.com";
+    }
+
+    /**
      * Gets the SuperAnnotate access token header name
      * @returns SuperAnnotate access token header name
      */

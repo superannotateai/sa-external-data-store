@@ -34,6 +34,7 @@ npm install
 ```env
 PORT=3005
 DATA_STORE=S3 # or LOCAL
+SA_DOMAIN=superannotate.com # base SuperAnnotate domain, defaults to superannotate.com
 ```
 
 ### S3 backend (`DATA_STORE=S3`)

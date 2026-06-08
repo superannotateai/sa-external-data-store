@@ -1,12 +1,13 @@
 import https from "https";
 import path from "path";
 import SafeJSON from "./functions";
+import { Config } from "./config";
 import { AnnotationPermissions, RequestOptions, SaAggregateAccessesResponse, SaAuthError, SaUser } from "../types";
 
 export type { AnnotationPermissions, SaAuthError, SaUser } from "../types";
 
-const SA_ITEM_API_HOST = "item.devsuperannotate.com";
-const SA_USER_API_HOST = "api.devsuperannotate.com";
+const SA_ITEM_API_HOST = `item.${Config.saDomain()}`;
+const SA_USER_API_HOST = `api.${Config.saDomain()}`;
 const SA_USER_AGENT = "SA External Data Store";
 
 /**
@@ -114,7 +115,7 @@ export class SuperAnnotateApi {
 
     /**
      * Resolves annotation read/write permissions for the current user
-     * Calls POST item.devsuperannotate.com/api/v1/items/aggregateAccesses and
+     * Calls POST item.{SA_DOMAIN}/api/v1/items/aggregateAccesses and
      * inspects data.actions for GetItemAnnotation (read) and EditItemAnnotation (write)
      * @param teamId - Team ID
      * @param projectId - Project ID
