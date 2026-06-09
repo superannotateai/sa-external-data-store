@@ -1,4 +1,4 @@
-import { assertSafeRelativeItemsPath, isSafeSegment, isUnsafeRelativePath, resolveFilesPath, resolveItemsFilePath } from "../pathSafety";
+import { assertSafeRelativeItemsPath, isSafeRelativeSubpath, isSafeSegment, isUnsafeRelativePath, resolveFilesPath, resolveItemsFilePath } from "../pathSafety";
 import { AppError } from "../../types/errors";
 
 const basePath = "/var/data/storage";
@@ -76,6 +76,25 @@ describe("pathSafety", () => {
             expect(isSafeSegment("a\tb")).toBe(false);
             expect(isSafeSegment("a\x7fb")).toBe(false);
             expect(isSafeSegment("file\r\nContent-Length: 0")).toBe(false);
+        });
+    });
+
+    describe("isSafeRelativeSubpath", () => {
+        it("should accept single and nested safe sub-paths", () => {
+            expect(isSafeRelativeSubpath("image.png")).toBe(true);
+            expect(isSafeRelativeSubpath("images/image_1.jpg")).toBe(true);
+            expect(isSafeRelativeSubpath("a/b/c/file.txt")).toBe(true);
+        });
+
+        it("should reject traversal, absolute, empty-segment, and control-char paths", () => {
+            expect(isSafeRelativeSubpath("../../etc/passwd")).toBe(false);
+            expect(isSafeRelativeSubpath("images/../../etc/passwd")).toBe(false);
+            expect(isSafeRelativeSubpath("/etc/passwd")).toBe(false);
+            expect(isSafeRelativeSubpath("images//passwd")).toBe(false);
+            expect(isSafeRelativeSubpath("images\\..\\secret")).toBe(false);
+            expect(isSafeRelativeSubpath("a/\nb")).toBe(false);
+            expect(isSafeRelativeSubpath("")).toBe(false);
+            expect(isSafeRelativeSubpath(undefined)).toBe(false);
         });
     });
 });

@@ -107,3 +107,21 @@ export function isSafeSegment(segment: unknown): segment is string {
     }
     return true;
 }
+
+/**
+ * Validates a relative sub-path made of one or more safe segments
+ * (e.g. "image.png" or "images/image_1.jpg"). Allows nested directories but
+ * rejects absolute paths, "."/".." segments, empty segments, separators that
+ * would produce them, and control characters. The actual jail is still enforced
+ * by the resolve* helpers; this is the cheap structural pre-check.
+ */
+export function isSafeRelativeSubpath(relativePath: unknown): relativePath is string {
+    if (!relativePath || typeof relativePath !== "string") {
+        return false;
+    }
+    if (path.isAbsolute(relativePath)) {
+        return false;
+    }
+    const segments = relativePath.split(/[/\\]/);
+    return segments.length > 0 && segments.every((segment) => isSafeSegment(segment));
+}

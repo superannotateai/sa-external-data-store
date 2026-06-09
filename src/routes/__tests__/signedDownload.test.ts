@@ -95,17 +95,33 @@ describe("storage routes", () => {
             expect(mockGetFilesSignedUrl).toHaveBeenCalledTimes(2);
         });
 
-        it("should reject an access map entry that is not a safe segment", async () => {
-            mockReadAccessMap.mockResolvedValue({ files: ["../../etc/passwd"] });
+        it("should sign nested entries under the files root", async () => {
+            mockReadAccessMap.mockResolvedValue({ label: "Batch", files: ["images/image_1.jpg"], metadata: {} });
+            mockGetFilesSignedUrl.mockImplementation((entry: string) => `http://localhost:3005/storage/fileSigned?path=${encodeURIComponent(entry)}`);
             const handler = getHandler("/");
             const res = createMockRes();
 
             await handler(createMockReq(), res, () => {});
 
-            expect(res.statusCode).toBe(500);
-            expect(JSON.parse(res._body)).toMatchObject({ code: "INTERNAL_ERROR" });
-            expect(mockGetFilesSignedUrl).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(200);
+            expect(Object.keys(JSON.parse(res._body).files)).toEqual(["images/image_1.jpg"]);
+            expect(mockGetFilesSignedUrl).toHaveBeenCalledWith("images/image_1.jpg", expect.any(String));
         });
+
+        it.each([["../../etc/passwd"], ["images/../../etc/passwd"], ["/etc/passwd"], ["images//passwd"]])(
+            "should reject unsafe access map entry %s",
+            async (bad) => {
+                mockReadAccessMap.mockResolvedValue({ files: [bad] });
+                const handler = getHandler("/");
+                const res = createMockRes();
+
+                await handler(createMockReq(), res, () => {});
+
+                expect(res.statusCode).toBe(500);
+                expect(JSON.parse(res._body)).toMatchObject({ code: "INTERNAL_ERROR" });
+                expect(mockGetFilesSignedUrl).not.toHaveBeenCalled();
+            }
+        );
     });
 
     describe("GET /fileSigned (redeem capability)", () => {

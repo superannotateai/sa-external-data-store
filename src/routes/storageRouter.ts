@@ -5,7 +5,7 @@ import { PathValidatorMiddleware } from "../middleware/pathValidatorMiddleware";
 import { SaInternalRequest } from "../types";
 import { AppError } from "../types/errors";
 import { sendError } from "../utils/errorHandler";
-import { isSafeSegment } from "../utils/pathSafety";
+import { isSafeRelativeSubpath } from "../utils/pathSafety";
 import { Config } from "../utils/config";
 import repository from "../repository";
 
@@ -58,8 +58,13 @@ router.get("/", AuthSaMiddleware, PathValidatorMiddleware, async (req: Request, 
         const host = Config.publicBaseUrl();
         const files: Record<string, string> = {};
         for (const entry of manifest.files) {
-            // Each manifest entry becomes a path segment under the files root.
-            if (!isSafeSegment(entry)) {
+            // Each manifest entry is a relative path under the files root; it may
+            // be nested (e.g. "images/image_1.jpg"). The files jail is enforced
+            // on resolve; this rejects traversal/absolute/control-char entries.
+            if (!isSafeRelativeSubpath(entry)) {
+                console.debug(
+                    `[storage] Invalid manifest entry for ${saScope}/${saItemName}: ${JSON.stringify(entry)}`
+                );
                 sendError(res, 500, "Invalid manifest entry", "INTERNAL_ERROR");
                 return;
             }
