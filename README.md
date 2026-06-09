@@ -162,29 +162,177 @@ Errors are returned as standardized JSON:
 }
 ```
 
-## Creating access maps
+## Local storage folder structure
 
-> **Placeholder — to be completed.**
->
-> An *access map* is an owner-curated JSON file that declares which raw assets an
-> item is allowed to expose for download. The `/storage/` endpoint reads it to
-> decide which files to sign.
->
-> - Location: `{LOCAL_STORAGE_PATH}/access_maps/{teamId}/{projectId}/<item_name>.json`
-> - Shape:
->
-> ```json
-> {
->   "label": "Human-readable label",
->   "files": ["fileName1.pdf", "fileName2.png"],
->   "metadata": {}
-> }
-> ```
->
-> Raw assets themselves live under `{LOCAL_STORAGE_PATH}/files/`.
->
-> _Detailed authoring guidance (naming rules, how `<item_name>` maps to SuperAnnotate
-> items, examples, and validation) will be added here later._
+When `DATA_STORE=LOCAL`, the service reads and writes everything under a single
+storage root.
+
+1. Create the storage folder in the **root of this project** (e.g. `local_storage/`).
+2. Point `LOCAL_STORAGE_PATH` at it using an **absolute path**:
+
+   ```env
+   LOCAL_STORAGE_PATH=/absolute/path/to/sa-external-data-store/local_storage
+   ```
+
+Inside `LOCAL_STORAGE_PATH` there are up to three folders:
+
+```text
+{LOCAL_STORAGE_PATH}/
+  files/         # input assets (optional)
+  access_maps/   # download access rules (optional)
+  items/         # annotations (created automatically)
+```
+
+> `files/` and `access_maps/` are **optional** — they are only needed when items
+> have input assets (images, videos, PDFs, etc.) that should be downloadable.
+> A project that only stores annotations needs just `items/` (auto-created).
+
+### `files/` — input assets
+
+Stores the raw input files served for download. Lay them out however you like;
+nested subfolders are allowed (e.g. `files/images/image_1.jpg`). **Symlinks are
+supported**, so large datasets can live elsewhere and be linked in.
+
+```text
+files/
+  contract.pdf
+  images/
+    image_1.jpg
+    image_2.jpg
+```
+
+Files are never listed directly — an asset is only downloadable if an access map
+references it (see below).
+
+### `access_maps/` — download access rules
+
+An *access map* is a JSON file that declares which `files/` assets a given item is
+allowed to expose. `GET /storage/` reads it and returns a signed download URL for
+each listed file.
+
+**Location**
+
+```text
+access_maps/<team_id>/<project_id>/<item_name>.json
+```
+
+- Scoped by **team and project only** — intentionally independent of the
+  SuperAnnotate folder.
+- The file name must match the **item name** (without extension), e.g. an item
+  named `test_00001` → `access_maps/<team_id>/<project_id>/test_00001.json`.
+- Because the path has no folder component, **items with the same name share the
+  same access rule**, even if they live in different SuperAnnotate folders.
+
+**File format**
+
+```json
+{
+  "label": "test_00001",
+  "files": ["images/image_1.jpg"],
+  "metadata": {}
+}
+```
+
+- `label` — human-readable label (free-form).
+- `files` — the **allowlist**: relative paths under `files/`. Only files listed
+  here can ever be signed/downloaded for this item. Nested paths are allowed
+  (e.g. `images/image_1.jpg`); `..`, absolute paths, and control characters are rejected.
+- `metadata` — arbitrary JSON, returned as-is to the caller.
+
+**Access logic (how a download is authorized)**
+
+1. The caller hits `GET /storage/` with their SA token and `sa-team-id`,
+   `sa-project-id`, `sa-folder-id`, `sa-item-id`.
+2. The service resolves the item from SuperAnnotate (`getItem`) — this is the
+   authorization check and also yields the item **name**.
+3. It reads `access_maps/<team_id>/<project_id>/<item_name>.json`.
+4. For each entry in `files`, it returns a short-lived signed URL pointing at
+   `GET /storage/fileSigned`.
+5. `404 NOT_FOUND_MANIFEST` is returned if no access map exists for the item.
+
+### `items/` — annotations (auto-managed)
+
+Annotation files are created and updated automatically by the service; you do not
+create these by hand.
+
+**Storage path**
+
+```text
+items/<team_id>/<project_id>/<folder_id>/<item_name>_annotation.json
+```
+
+- Folder-scoped (unlike access maps), because annotations belong to a specific
+  SuperAnnotate folder/item.
+- `<item_name>` is resolved from SuperAnnotate; the file name is always
+  `<item_name>_annotation.json`.
+- `POST /annotation/` writes this file (creating parent folders as needed);
+  `GET /annotation/` reads it.
+
+### Example: 3 image items
+
+A minimal setup for team `1`, project `2`, with three items
+(`test_00001`–`test_00003`), each exposing one image:
+
+```text
+local_storage/
+  files/
+    images/
+      image_1.jpg
+      image_2.jpg
+      image_3.jpg
+  access_maps/
+    1/
+      2/
+        test_00001.json
+        test_00002.json
+        test_00003.json
+  items/                         # created automatically after annotations are saved
+    1/2/<folder_id>/
+      test_00001_annotation.json
+```
+
+Each access map points one item at one image — e.g. `access_maps/1/2/test_00001.json`:
+
+```json
+{
+  "label": "test_00001",
+  "files": ["images/image_1.jpg"],
+  "metadata": {}
+}
+```
+
+`test_00002.json` → `images/image_2.jpg`, `test_00003.json` → `images/image_3.jpg`.
+
+Calling `GET /storage/` for item `test_00001` then returns:
+
+```json
+{
+  "label": "test_00001",
+  "files": {
+    "images/image_1.jpg": "https://<host>/storage/fileSigned?path=images%2Fimage_1.jpg&expires=...&signature=..."
+  },
+  "metadata": {}
+}
+```
+
+#### Upload manifest (JSONL)
+
+To create the matching items in SuperAnnotate, use a JSONL upload manifest — one
+JSON object per line. The `metadata.name` of each line must match the access-map
+file name (the item name). This file is consumed by SuperAnnotate's import, not by
+this service.
+
+`upload_1.jsonl`:
+
+```jsonl
+{"metadata":{"name":"test_00001","folder_name":"batch_1"},"data":{"image_annotation":{"value":{"name":"test_00001"}}}}
+{"metadata":{"name":"test_00002","folder_name":"batch_1"},"data":{"image_annotation":{"value":{"name":"test_00002"}}}}
+{"metadata":{"name":"test_00003","folder_name":"batch_1"},"data":{"image_annotation":{"value":{"name":"test_00003"}}}}
+```
+
+- `metadata.name` — item name; must match the access-map file name (`<item_name>.json`).
+- `metadata.folder_name` — target SuperAnnotate folder (e.g. `batch_1`).
+- `data.<component_id>.value` — initial component value (here component `image_annotation`).
 
 ## Testing
 
