@@ -7,8 +7,6 @@ dist-tsc/
 .env.local
 tokens.json
 .idea/
-local_storage
-infosec/
-.cursor/
 local_storage/
 infosec/
+.cursor/
