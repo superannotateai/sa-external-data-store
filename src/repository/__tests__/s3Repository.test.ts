@@ -20,6 +20,7 @@ describe("S3Repository", () => {
             listObjects: jest.fn(),
             downloadFile: jest.fn(),
             uploadStream: jest.fn(),
+            getPresignedUrl: jest.fn(),
         } as any;
 
         // Mock the S3Sdk constructor to return our mock
@@ -77,10 +78,7 @@ describe("S3Repository", () => {
 
     describe("getDataStream", () => {
         it("should return stream when file exists", async () => {
-            const teamId = 1;
-            const projectId = 2;
-            const folderId = 3;
-            const itemId = 4;
+            const path = "1/2/3/4/document.pdf";
             const mockStream = new Readable();
 
             const mockResponse: Partial<GetObjectCommandOutput> = {
@@ -89,31 +87,25 @@ describe("S3Repository", () => {
 
             mockS3Sdk.downloadFile.mockResolvedValue(mockResponse as GetObjectCommandOutput);
 
-            const result = await s3Repository.getDataStream(teamId, projectId, folderId, itemId);
+            const result = await s3Repository.getDataStream(path);
 
             expect(mockS3Sdk.downloadFile).toHaveBeenCalledTimes(1);
-            expect(mockS3Sdk.downloadFile).toHaveBeenCalledWith("items/1/2/3/4.txt");
+            expect(mockS3Sdk.downloadFile).toHaveBeenCalledWith("items/1/2/3/4/document.pdf");
             expect(result).toBe(mockStream);
         });
 
         it("should return null when file does not exist", async () => {
-            const teamId = 1;
-            const projectId = 2;
-            const folderId = 3;
-            const itemId = 4;
+            const path = "1/2/3/4/missing.pdf";
 
             mockS3Sdk.downloadFile.mockResolvedValue(null);
 
-            const result = await s3Repository.getDataStream(teamId, projectId, folderId, itemId);
+            const result = await s3Repository.getDataStream(path);
 
             expect(result).toBeNull();
         });
 
         it("should return null when response body is undefined", async () => {
-            const teamId = 1;
-            const projectId = 2;
-            const folderId = 3;
-            const itemId = 4;
+            const path = "1/2/3/4/file.txt";
 
             const mockResponse: Partial<GetObjectCommandOutput> = {
                 Body: undefined,
@@ -121,7 +113,7 @@ describe("S3Repository", () => {
 
             mockS3Sdk.downloadFile.mockResolvedValue(mockResponse as GetObjectCommandOutput);
 
-            const result = await s3Repository.getDataStream(teamId, projectId, folderId, itemId);
+            const result = await s3Repository.getDataStream(path);
 
             expect(result).toBeNull();
         });
@@ -129,40 +121,46 @@ describe("S3Repository", () => {
 
     describe("saveDataStream", () => {
         it("should save stream with correct key path and content type", async () => {
-            const teamId = 1;
-            const projectId = 2;
-            const folderId = 3;
-            const itemId = 4;
+            const path = "1/2/3/4/document.pdf";
             const mockStream = new Readable();
-            const contentLength = 1024;
 
-            await s3Repository.saveDataStream(teamId, projectId, folderId, itemId, mockStream, contentLength);
+            await s3Repository.saveDataStream(path, mockStream);
 
             expect(mockS3Sdk.uploadStream).toHaveBeenCalledTimes(1);
             expect(mockS3Sdk.uploadStream).toHaveBeenCalledWith(
-                "items/1/2/3/4.txt",
+                "items/1/2/3/4/document.pdf",
                 mockStream,
-                "text/plain",
-                contentLength
+                "text/plain"
             );
         });
 
         it("should save stream without content length when not provided", async () => {
-            const teamId = 1;
-            const projectId = 2;
-            const folderId = 3;
-            const itemId = 4;
+            const path = "1/2/3/4/file.txt";
             const mockStream = new Readable();
 
-            await s3Repository.saveDataStream(teamId, projectId, folderId, itemId, mockStream);
+            await s3Repository.saveDataStream(path, mockStream);
 
             expect(mockS3Sdk.uploadStream).toHaveBeenCalledTimes(1);
             expect(mockS3Sdk.uploadStream).toHaveBeenCalledWith(
-                "items/1/2/3/4.txt",
+                "items/1/2/3/4/file.txt",
                 mockStream,
-                "text/plain",
-                undefined
+                "text/plain"
             );
+        });
+    });
+
+    describe("getSignedUrl", () => {
+        it("should return presigned URL for file", async () => {
+            const path = "1/2/3/4/document.pdf";
+            const expectedUrl = "https://bucket.s3.region.amazonaws.com/items/1/2/3/4/document.pdf?X-Amz-...";
+
+            mockS3Sdk.getPresignedUrl.mockResolvedValue(expectedUrl);
+
+            const result = await s3Repository.getSignedUrl(path);
+
+            expect(mockS3Sdk.getPresignedUrl).toHaveBeenCalledTimes(1);
+            expect(mockS3Sdk.getPresignedUrl).toHaveBeenCalledWith("items/1/2/3/4/document.pdf");
+            expect(result).toBe(expectedUrl);
         });
     });
 });
