@@ -1,8 +1,13 @@
 node_modules/
 dist/
+dist-tsc/
 *.log
 .DS_Store
 .env
 .env.local
 tokens.json
-
+.idea/
+local_storage
+infosec/
+.cursor/
+local_storage/
